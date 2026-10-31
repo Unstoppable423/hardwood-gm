@@ -14,13 +14,13 @@ button.red{background:var(--q1);color:#fff}
 input,select{font:inherit;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);width:100%}
 #app{max-width:520px;margin:0 auto;min-height:100vh;min-height:100dvh;position:relative;padding-bottom:96px;background:var(--bg)}
 /* header */
-.hdr{position:sticky;top:0;z-index:8;background:var(--hdr);color:#fff;height:54px;display:grid;grid-template-columns:64px 1fr 64px;align-items:center;box-shadow:0 1px 0 #0002}
+.hdr{position:sticky;top:0;z-index:8;background:var(--hdr);color:#fff;height:calc(54px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);box-sizing:border-box;display:grid;grid-template-columns:64px 1fr 64px;align-items:center;box-shadow:0 1px 0 #0002}
 .hdr .ttl{text-align:center;font-weight:800;font-size:17px;letter-spacing:1.2px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hdr .lb,.hdr .rb{background:none;color:#fff;font-size:22px;padding:8px 14px}
 .hdr .rb{font-size:15px;justify-self:end}
 .hdr .lb .bdg{position:absolute;margin:-6px 0 0 -2px;background:var(--q1);color:#fff;border-radius:9px;font-size:10px;padding:0 5px;font-weight:700}
 /* tabs (uppercase underline) */
-.tabs{display:flex;overflow-x:auto;background:var(--card);border-bottom:1px solid var(--line);scrollbar-width:none;position:sticky;top:54px;z-index:7}
+.tabs{display:flex;overflow-x:auto;background:var(--card);border-bottom:1px solid var(--line);scrollbar-width:none;position:sticky;top:calc(54px + env(safe-area-inset-top));z-index:7}
 .tabs::-webkit-scrollbar{display:none}
 .tabs button{flex:1 0 auto;background:none;border-radius:0;padding:12px 12px 10px;font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--sub);border-bottom:3px solid transparent}
 .tabs button.on{color:var(--ink);border-bottom-color:var(--hdr);font-weight:700}
@@ -206,7 +206,7 @@ button.sm { min-height: 40px; min-width: 40px; }
 .edr span{font-size:13px;color:var(--muted)}
 .edr b{text-align:right;font-size:15px;border-radius:6px;padding:2px 0}
 .edr input[type=range]{width:100%;min-height:32px}
-.edtop{position:sticky;top:54px;z-index:6;display:flex;gap:10px;align-items:center;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--line)}
+.edtop{position:sticky;top:calc(54px + env(safe-area-inset-top));z-index:6;display:flex;gap:10px;align-items:center;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--line)}
 .edtop .rbox{min-width:64px}
 .card ul{margin:6px 0 0 18px;padding:0}
 .small{font-size:12px}
