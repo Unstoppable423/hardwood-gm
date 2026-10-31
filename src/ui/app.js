@@ -480,6 +480,7 @@ PAGES.player = (pg0) => {
   let body = tb === 'skills' ? skillsTab(p) : tb === 'contract' ? contractTab(p) + txSection(p) : tb === 'games' ? gamesTab(p) : careerTab(p, pot);
   const acts = [];
   if (own && !['PLAYOFFS'].includes(L.phase)) acts.push(`<button class="${(L.tradeBlock || []).includes(p.pid) ? 'red' : 'blue'}" data-a="block" data-pid="${p.pid}">${(L.tradeBlock || []).includes(p.pid) ? 'Remove from block' : 'Trade Block'}</button>`);
+  if (own && tradeOpen(L)) acts.push(`<button class="go" data-a="getOffers" data-pid="${p.pid}">Get Offers</button>`);
   if (own && L.phase === 'RESIGN' && L.expiring?.includes(p.pid) && p.willing) acts.push(`<button class="go" data-a="offerSheet" data-pid="${p.pid}" data-kind="resign">Re-sign</button>`);
   if (own && ['PRESEASON', 'REGULAR'].includes(L.phase) && p.contract && !p.contract.ext) acts.push(`<button class="go" data-a="offerSheet" data-pid="${p.pid}" data-kind="ext">Extend</button>`);
   if (own && p.il) acts.push(`<button data-a="ilAct" data-pid="${p.pid}">Activate from IL</button>`);
@@ -981,8 +982,15 @@ PAGES.fapool = () => {
 const expYr = (L, p) => p.draft?.year ? L.season - p.draft.year : (p.prior?.yrs || 0) + (p.career?.length || 0) + 1;
 // ---------- MODALS ----------
 function sheetHead(title, sub = '') { return `<div class="sh"><div><div style="font-weight:800">${title}</div>${sub ? `<div style="font-size:12px;opacity:.85">${sub}</div>` : ''}</div><button class="x sm" data-a="close" aria-label="Close">${icon('close', { s: 18 })}</button></div>`; }
-function modalView() { return ({ signTo: signToModal, offer: offerModal, holiday: holidayModal, cut: cutModal }[S.modal.type] || (() => ''))(); }
+function modalView() { return ({ offers: offersModal, signTo: signToModal, offer: offerModal, holiday: holidayModal, cut: cutModal }[S.modal.type] || (() => ''))(); }
 const structOK = (L, kind) => kind !== 'ext' && !(L.phase === 'REGULAR' && kind === 'fa');
+function offersModal() {
+  const L = S.L, p = E.getP(L, S.modal.pid); const list = (L.tradeOffers || []).filter(x => S.modal.ids.includes(x.id));
+  const onBlock = (L.tradeBlock || []).includes(p.pid);
+  return sheetHead(`Offers for ${esc(p.name)}`, `${list.length} team(s) · ${p.pos} · OVR ${R(p.ovr)}`) + `<div class="wrap">
+  ${list.length ? list.map(x => { const d = descOffer(L, x.offer); return `<div class="card"><div class="row">${disc(x.offer.tidB, 32)}<div class="grow"><div class="nm">${esc(T(x.offer.tidB).city)} ${esc(T(x.offer.tidB).name)}</div><div class="meta">Value ${Math.round(x.offer.value || 0)}</div></div><button class="go sm" data-a="offAccept" data-id="${x.id}">Accept</button></div><div style="font-size:13px;margin-top:4px"><span class="muted">You get:</span> ${d.get}</div></div>`; }).join('') : '<div class="card muted">No team made an offer right now. Put him on the block and offers may come later.</div>'}
+  <div class="grid2" style="margin-top:8px">${onBlock ? '<button disabled>On trade block</button>' : `<button class="blue" data-a="block" data-pid="${p.pid}">Add to Trade Block</button>`}<button data-a="close">Back</button></div></div>`;
+}
 function signToModal() {
   const L = S.L, p = E.getP(L, S.modal.pid); const amt = E.fairContract(L, p);
   return sheetHead(`Sign ${esc(p.name)} to…`, `Commissioner signing · ${M(amt)}/yr · max length · ignores interest and cap`) + `<div class="wrap"><div class="list">${L.teams.filter(t => !t.inactive).map(t => `<button class="it" style="width:100%;text-align:left" data-a="signToTeam" data-tid="${t.tid}">${esc(t.city + ' ' + t.name)}${t.tid === p.formerTid ? ' <span class="tag" style="background:#e3e7ec;color:#111">Previous team</span>' : ''} <span class="muted">${E.commishYears(L, p, t.tid)} yrs · ${E.activeCount(L, t.tid)}/${E.ROSTER_MAX}</span></button>`).join('')}</div></div>`;
@@ -1187,14 +1195,15 @@ const A = {
   short(d) { const L = S.L; L.shortlist ||= []; const id = +d.pid; const i = L.shortlist.indexOf(id); if (i >= 0) L.shortlist.splice(i, 1); else L.shortlist.push(id); autosave(); render(); },
   shortOnly() { S.shortOnly = !S.shortOnly; render(); },
   hofMine() { S.hofMine = !S.hofMine; render(); },
-  block(d) { const on = E.toggleBlock(S.L, +d.pid); toast(on ? 'Added to the trade block' : 'Removed from the trade block'); autosave(); render(); },
+  block(d) { const on = E.toggleBlock(S.L, +d.pid); toast(on ? 'Added to the trade block' : 'Removed from the trade block'); autosave(); render(); if (S.modal) renderModal(); },
   callAround() { overlay('Calling around the league'); E.refreshOffers(S.L, true); overlay(null); autosave(); S.tab.trade = 'offers'; render(); toast(`${S.L.tradeOffers.length} offer(s) on the table`); },
-  offAccept(d) { const r = E.acceptOffer(S.L, +d.id); if (!r.ok) return toast(r.error); S.L.inbox.unshift({ id: S.L.msgId++, season: S.L.season, day: S.L.day, from: 'Front Office', subject: 'Trade completed', body: r.text, read: false }); toast('Trade completed!'); autosave(); render(); },
+  offAccept(d) { const r = E.acceptOffer(S.L, +d.id); if (!r.ok) return toast(r.error); S.L.inbox.unshift({ id: S.L.msgId++, season: S.L.season, day: S.L.day, from: 'Front Office', subject: 'Trade completed', body: r.text, read: false }); toast('Trade completed!'); if (S.modal?.type === 'offers') { S.modal = null; renderModal(); } autosave(); render(); },
   offDecline(d) { E.declineOffer(S.L, +d.id); autosave(); render(); },
   offCounter(d) { const x = S.L.tradeOffers.find(o => o.id === +d.id); if (!x) return; const o = x.offer; S.trade = { tid: o.tidB, a: [...o.aPids], ap: [...o.aPicks], b: [...o.bPids], bp: [...o.bPicks] }; E.declineOffer(S.L, x.id); S.tab.trade = 'machine'; render(); },
   convince(d) { const ok = E.convinceRetire(S.L, +d.pid); toast(ok ? 'He agreed to play another season!' : 'His mind is made up — he will retire.'); autosave(); render(); },
   offerSheet(d) { S.modal = { type: 'offer', pid: +d.pid, kind: d.kind }; renderModal(); },
   offRaise(d) { S.modal.raise = +d.v; renderModal(); },
+  getOffers(d) { const L = S.L; overlay('Calling every team'); const ids = E.instantOffers(L, +d.pid); overlay(null); S.modal = { type: 'offers', pid: +d.pid, ids }; autosave(); renderModal(); },
   signToSheet(d) { S.modal = { type: 'signTo', pid: +d.pid }; renderModal(); },
   signToTeam(d) { const L = S.L, p = E.getP(L, S.modal.pid); const tid = +d.tid; if (E.activeCount(L, tid) >= E.ROSTER_MAX && !confirm(`${L.teams[tid].abbr} already has ${E.ROSTER_MAX} active players. Sign anyway?`)) return;
     E.commissionerSign(L, p, tid); S.modal = null; renderModal(); toast(`${p.name} signed with ${L.teams[tid].abbr}`); autosave(); render(); },

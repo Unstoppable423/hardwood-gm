@@ -71,7 +71,7 @@ export function executeTrade(L, o) {
   return text;
 }
 // "Shop this player": CPU teams build packages for a user asset
-export function findOffers(L, pid) {
+export function findOffers(L, pid, max = 4) {
   const p = getP(L, pid); const target = playerValue(L, p); const offers = [];
   for (const t of shuffle(L.teams.filter(t => t.tid !== L.userTid && !t.inactive))) {
     const roster = teamPlayers(L, t.tid).map(x => ({ x, v: playerValue(L, x) })).filter(y => y.v < target * 0.95).sort((a, b) => b.v - a.v);
@@ -82,7 +82,7 @@ export function findOffers(L, pid) {
     if (sum < goal) continue;
     const o = { tidA: L.userTid, tidB: t.tid, aPids: [pid], aPicks: [], bPids: pkg.pids, bPicks: pkg.picks };
     if (validateTrade(L, o).ok) offers.push({ ...o, value: sum });
-    if (offers.length >= 4) break;
+    if (offers.length >= max) break;
   }
   return offers;
 }

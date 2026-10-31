@@ -231,6 +231,16 @@ export function refreshOffers(L, force = false) {
     }
   }
 }
+// 2K-style instant offers: ask every CPU team now; offers land in the Trade Center list too
+export function instantOffers(L, pid) {
+  L.tradeOffers ||= []; L.offerId ||= 1; const now = L.phase === 'REGULAR' ? L.day : 0; const ids = [];
+  for (const o of findOffers(L, pid, 40).sort((a, b) => b.value - a.value)) {
+    let x = L.tradeOffers.find(y => y.pid === pid && y.offer.tidB === o.tidB);
+    if (!x) { x = { id: L.offerId++, pid, day: now, season: L.season, phase: L.phase, offer: o }; L.tradeOffers.push(x); }
+    ids.push(x.id);
+  }
+  return ids;
+}
 export function acceptOffer(L, id) {
   const o = (L.tradeOffers || []).find(x => x.id === id); if (!o) return { ok: false, error: 'Offer expired' };
   const v = validateTrade(L, o.offer); if (!v.ok) return v;
