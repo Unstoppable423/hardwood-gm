@@ -12,6 +12,8 @@ window.__S = S; window.__E = E; window.__avatar = (...a) => avatar(...a); window
 
 // ---------- utils ----------
 const M = (k) => E.fmtMoney(k);
+// team pickers: active teams A-Z by nickname (Bucks, Bulls, Cavaliers...), so expansion/relocated teams slot in
+const teamsAZ = (L) => L.teams.filter(t => !t.inactive).sort((a, b) => a.name.localeCompare(b.name) || a.city.localeCompare(b.city));
 const T = (tid) => (S.L || S.preL).teams[tid];
 // Ratings: internal values drive the sim; players see the 40-99 display scale (E.dispRating). Bands are in display terms.
 const R = (v) => E.dispRating(v);
@@ -192,7 +194,7 @@ function setupView() {
 }
 function pickTeamView() {
   const L = S.preL;
-  const ts = L.teams.map(t => ({ t, o: E.teamOvr(L, t.tid) })).sort((a, b) => a.t.city.localeCompare(b.t.city));
+  const ts = L.teams.map(t => ({ t, o: E.teamOvr(L, t.tid) })).sort((a, b) => a.t.name.localeCompare(b.t.name) || a.t.city.localeCompare(b.t.city));
   return `<div class="hdr"><button class="lb" data-a="toSetup">${icon('back')}</button><div class="ttl">Select Team</div><span></span></div><div class="wrap">
   <div class="muted" style="padding:0 14px 8px">Fall ${L.season - 1}: ${L.teams.length} teams. Tap a team to preview its roster.</div>
   <div class="tgrid">${ts.map(({ t, o }) => `<button class="tcard" style="background:linear-gradient(135deg,${t.c1},${t.c2})" data-a="previewTeam" data-tid="${t.tid}"><div class="c">${esc(t.city)}</div><div class="n">${esc(t.name)}</div><div class="c">${t.conf === 'E' ? 'East' : 'West'} · ${t.div}</div><span class="o">${R(o)}</span></button>`).join('')}</div></div>`;
@@ -618,7 +620,7 @@ PAGES.trade = () => {
     body += `<div class="sect">Recent league trades</div><div class="list">${tx.map(t => `<div class="it" style="font-size:13px">${esc(t.text)}</div>`).join('') || '<div class="it muted">None yet.</div>'}</div>`;
   } else if (tb === 'commish') {
     const ct = S.ct ||= { a: L.userTid, b: L.teams.find(t => !t.inactive && t.tid !== L.userTid).tid, ap: [], bp: [], ak: [], bk: [] };
-    const teamSel = (side) => `<select data-ct="${side}" aria-label="Team ${side.toUpperCase()}" style="width:100%">${L.teams.filter(t => !t.inactive).map(t => `<option value="${t.tid}" ${ct[side] === t.tid ? 'selected' : ''}>${esc(t.city + ' ' + t.name)}</option>`).join('')}</select>`;
+    const teamSel = (side) => `<select data-ct="${side}" aria-label="Team ${side.toUpperCase()}" style="width:100%">${teamsAZ(L).map(t => `<option value="${t.tid}" ${ct[side] === t.tid ? 'selected' : ''}>${esc(t.city + ' ' + t.name)}</option>`).join('')}</select>`;
     const sideList = (side) => { const tid = ct[side], sel = ct[side + 'p'], selk = ct[side + 'k'];
       const ps = E.teamPlayers(L, tid).sort((x, y) => y.ovr - x.ovr); const pk = L.picks.filter(k => k.tid === tid).sort((x, y) => x.season - y.season || x.round - y.round);
       return `<div class="list">${ps.map(p => `<div class="it ${sel.includes(p.pid) ? 'hl' : ''}"><button class="sm ${sel.includes(p.pid) ? 'go' : ''}" data-a="ctTog" data-s="${side}" data-pid="${p.pid}" aria-label="Select">${sel.includes(p.pid) ? '✓' : '+'}</button><div class="grow"><div class="nm"><span class="plink" data-a="player" data-pid="${p.pid}">${esc(p.name)}</span></div><div class="meta">${E.posLabel(p)} ${R(p.ovr)} · ${p.age}y · ${M(p.contract?.amt || 0)}/${yrsLeft(p)}y</div></div></div>`).join('')}
@@ -647,7 +649,7 @@ function tradeMachine(L) {
   const chk = (arr, id, side, kind) => `<input type="checkbox" style="width:auto" data-a="tsel" data-side="${side}" data-kind="${kind}" data-id="${id}" ${arr.includes(id) ? 'checked' : ''}>`;
   const prow = (p, side) => `<label class="it">${chk(side === 'a' ? tr.a : tr.b, p.pid, side, 'p')}${avatar(p, 34)}<div class="grow"><div class="nm"><span class="plink" data-a="player" data-pid="${p.pid}">${esc(p.name)}</span></div><div class="meta">${p.pos} · ${p.age} · ${M(p.contract?.amt || 0)} · ${yrsLeft(p)}y</div></div>${sq(p.ovr)}</label>`;
   const krow = (k, side) => `<label class="it">${chk(side === 'a' ? tr.ap : tr.bp, k.id, side, 'k')}<div class="grow"><div class="nm">${k.season} Round ${k.round}</div><div class="meta">${T(k.orig).abbr} pick</div></div></label>`;
-  return `<div class="card"><div class="muted">Trade partner</div><select data-a="tteam">${L.teams.filter(t => t.tid !== L.userTid).map(t => `<option value="${t.tid}" ${t.tid === tr.tid ? 'selected' : ''}>${esc(t.city)} ${esc(t.name)}</option>`).join('')}</select>
+  return `<div class="card"><div class="muted">Trade partner</div><select data-a="tteam">${teamsAZ(L).filter(t => t.tid !== L.userTid).map(t => `<option value="${t.tid}" ${t.tid === tr.tid ? 'selected' : ''}>${esc(t.city)} ${esc(t.name)}</option>`).join('')}</select>
   ${ev ? (() => { const fb = E.tradeFeedback(L, o); return `<div style="margin-top:10px"><div class="agent ${fb.ok ? 'ok' : ''}"><div class="who">${esc(fb.from || T(tr.tid).city + ' GM')}${fb.mode ? ` · ${{ contend: 'Contending', rebuild: 'Rebuilding', middle: 'Middle of the pack' }[fb.mode]}` : ''}</div>${fb.lines.map(l => `<div>${esc(l)}</div>`).join('')}${fb.suggest ? `<button class="sm go" data-a="tAddSuggest" data-kind="${fb.suggest.kind}" data-id="${fb.suggest.id}">Add ${esc(fb.suggest.name)}</button>` : ''}</div>
   ${ev.need ? `<div class="kv" style="margin-top:6px"><span>Deal value</span><b class="${ev.ok ? 'tg' : ''}">${pct}%</b></div><div class="bar"><i style="width:${pct}%;background:${ev.ok ? 'var(--q4)' : 'var(--gold)'}"></i></div>` : ''}</div>`; })() : '<div class="muted" style="margin-top:8px">Pick players and picks from both sides.</div>'}
   <div class="grid2" style="margin-top:10px"><button class="go" data-a="propose" ${ev?.ok && tradeOpen(L) ? '' : 'disabled'}>Propose</button><button data-a="tclear">Clear</button></div></div>
@@ -922,14 +924,14 @@ PAGES.franchise = () => {
    <button class="sm go" style="margin-top:8px" data-a="cpCreate">Create & edit</button></div>
   <div class="sect">Draft room: teams you pick for</div><div class="card"><div class="muted small">${L.settings.draftAll ? '"Draft for all teams" is on: you make every pick.' : 'Your team always. Tick others to make their picks too (or turn on "Draft for all teams" above).'}</div>
    <div class="row" style="gap:8px;margin-top:6px"><button class="sm" data-a="dtAll" data-on="1">All</button><button class="sm" data-a="dtAll" data-on="0">Only mine</button></div>
-   <div class="dtgrid" style="margin-top:8px">${L.teams.filter(t => !t.inactive).map(t => { const on = t.tid === L.userTid || L.settings.draftAll || (L.draftTeams || []).includes(t.tid); return `<button class="sm ${on ? 'go' : ''}" data-a="dtTog" data-tid="${t.tid}" ${t.tid === L.userTid || L.settings.draftAll ? 'disabled' : ''} aria-pressed="${on}">${esc(t.abbr)}</button>`; }).join('')}</div></div>
+   <div class="dtgrid" style="margin-top:8px">${teamsAZ(L).map(t => { const on = t.tid === L.userTid || L.settings.draftAll || (L.draftTeams || []).includes(t.tid); return `<button class="sm ${on ? 'go' : ''}" data-a="dtTog" data-tid="${t.tid}" ${t.tid === L.userTid || L.settings.draftAll ? 'disabled' : ''} aria-pressed="${on}" title="${esc(t.city + " " + t.name)}">${esc(t.name)}</button>`; }).join('')}</div></div>
   <div class="sect">Draft classes</div><div class="card"><div class="muted small">Build custom classes for any upcoming draft (up to ${E.DC_AHEAD} years ahead), save them as presets, import/export JSON files, and load one into any draft, replacing or merging with the real class.</div><button class="sm go" style="margin-top:8px" data-a="goto" data-n="dclass">Open draft class manager</button> <button class="sm" style="margin-top:8px" data-a="goto" data-n="dcglobal">Edit any year (all franchises)</button></div>
   ${L.season >= 2026 ? `<div class="sect">Expansion team</div><div class="card" id="expCard"><div class="muted small">${E.canExpand(L) ? `Add a new franchise (up to ${E.MAX_TEAMS} teams). It picks 12 players in an expansion draft (each team protects 8; at most one player per team) and gets a top-5 pick in this year's draft.` : `New teams join in the offseason before the draft lottery (Awards or Staff phase), up to ${E.MAX_TEAMS} teams.`}</div>
    ${E.canExpand(L) ? `<div class="row" style="gap:8px;margin-top:8px"><input id="exCity" placeholder="City" maxlength="24" style="flex:1;min-width:0"><input id="exName" placeholder="Team name" maxlength="24" style="flex:1;min-width:0"></div>
    <div class="row" style="gap:8px;margin-top:8px;align-items:center"><input id="exAbbr" placeholder="ABR" maxlength="4" style="width:64px;text-transform:uppercase"><select id="exConf"><option value="E">East</option><option value="W">West</option></select></div><div class="row" style="gap:10px;margin-top:8px;align-items:center"><label class="small" for="exC1">Primary</label><input type="color" id="exC1" value="#1d6f42" class="swatch"><label class="small" for="exC2">Secondary</label><input type="color" id="exC2" value="#f2c14e" class="swatch"></div>
    <button class="sm go" style="margin-top:8px" data-a="exCreate">Create team & run expansion draft</button>` : ''}</div>` : ''}
   <div class="sect">Control any team</div><div class="card"><div class="muted small">Jump to any team to run its roster, trades, signings and re-signings, then jump back. Your GM career stays with ${esc(T(E.homeTid(L)).abbr)}. Teams you've controlled keep their own free agents: in the re-sign phase you decide for them (anything you skip falls back to the CPU).</div>
-   <div class="row" style="gap:8px;margin-top:8px"><select id="ctlTeam" aria-label="Team" style="flex:1">${L.teams.filter(t => !t.inactive).map(t => `<option value="${t.tid}" ${t.tid === L.userTid ? 'selected' : ''}>${esc(t.city + ' ' + t.name)}${t.tid === E.homeTid(L) ? ' (yours)' : ''}</option>`).join('')}</select></div>
+   <div class="row" style="gap:8px;margin-top:8px"><select id="ctlTeam" aria-label="Team" style="flex:1">${teamsAZ(L).map(t => `<option value="${t.tid}" ${t.tid === L.userTid ? 'selected' : ''}>${esc(t.city + ' ' + t.name)}${t.tid === E.homeTid(L) ? ' (yours)' : ''}</option>`).join('')}</select></div>
    <div class="row" style="gap:8px;margin-top:8px"><button class="sm go" data-a="ctlTeam">Control team</button><button class="sm" data-a="ctlMake">Make it my team</button></div></div>
   <div class="sect">Fantasy draft</div><div class="card">${L.fdraft ? '<div class="muted small">A fantasy draft is in progress.</div><button class="sm go" style="margin-top:8px" data-a="goto" data-n="fdraft">Resume draft room</button>' : E.canFantasyDraft(L) ? `<div class="muted small">Put every rostered player back in a pool and let all 29 teams, yours included, snake-draft them in a random order. Contracts stay with the players.</div><div class="row" style="gap:8px;margin-top:8px"><button class="sm go" data-a="fdStart">Start draft room</button><button class="sm" data-a="fantasyDraft">Auto-draft instantly</button></div>` : '<div class="muted small">Available at training camp (preseason, before the first game). Start rosters (real / random / file) are also chosen when you create a league.</div>'}</div>`, cta: `<button data-a="fsReset">Reset to defaults</button>` };
 };
@@ -945,7 +947,7 @@ PAGES.editPlayer = (pg0) => {
   const sel = (path, opts, label) => `<select data-ed="${path}" aria-label="${label}">${opts.map(([v, t]) => `<option value="${v}" ${String(edGet(path)) === String(v) ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
   const field = (label, html) => `<div><div class="muted">${label}</div>${html}</div>`;
   const slider = (path, label) => `<div class="edr"><span>${label}</span><input type="range" min="40" max="99" data-ed="${path}" value="${edGet(path)}" aria-label="${label}"><b id="v-${path.replace('.', '-')}" class="${qc(E.internalFor(edGet(path)))}">${edGet(path)}</b></div>`;
-  const teams = [[-1, 'Free agent'], ...(p.tid === -2 ? [[-2, 'Draft prospect']] : []), ...(p.retired ? [[p.tid, 'Retired']] : []), ...L.teams.filter(t => !t.inactive).map(t => [t.tid, `${t.city} ${t.name}`])];
+  const teams = [[-1, 'Free agent'], ...(p.tid === -2 ? [[-2, 'Draft prospect']] : []), ...(p.retired ? [[p.tid, 'Retired']] : []), ...teamsAZ(L).map(t => [t.tid, `${t.city} ${t.name}`])];
   const rc = E.raiseCap(L.season, true); const c = m.contract;
   const body = `${S.ed.errors.length ? `<div class="card warn"><b>Fix before saving:</b><ul>${S.ed.errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
   <div class="sect">Bio</div><div class="card"><div class="muted">Name</div><input data-ed="name" value="${esc(m.name)}" maxlength="40" aria-label="Name">
@@ -1008,7 +1010,7 @@ function offersModal() {
 }
 function signToModal() {
   const L = S.L, p = E.getP(L, S.modal.pid); const amt = E.fairContract(L, p);
-  return sheetHead(`Sign ${esc(p.name)} to…`, `Commissioner signing · ${M(amt)}/yr · max length · ignores interest and cap`) + `<div class="wrap"><div class="list">${L.teams.filter(t => !t.inactive).map(t => `<button class="it" style="width:100%;text-align:left" data-a="signToTeam" data-tid="${t.tid}">${esc(t.city + ' ' + t.name)}${t.tid === p.formerTid ? ' <span class="tag" style="background:#e3e7ec;color:#111">Previous team</span>' : ''} <span class="muted">${E.commishYears(L, p, t.tid)} yrs · ${E.activeCount(L, t.tid)}/${E.ROSTER_MAX}</span></button>`).join('')}</div></div>`;
+  return sheetHead(`Sign ${esc(p.name)} to…`, `Commissioner signing · ${M(amt)}/yr · max length · ignores interest and cap`) + `<div class="wrap"><div class="list">${teamsAZ(L).map(t => `<button class="it" style="width:100%;text-align:left" data-a="signToTeam" data-tid="${t.tid}">${esc(t.city + ' ' + t.name)}${t.tid === p.formerTid ? ' <span class="tag" style="background:#e3e7ec;color:#111">Previous team</span>' : ''} <span class="muted">${E.commishYears(L, p, t.tid)} yrs · ${E.activeCount(L, t.tid)}/${E.ROSTER_MAX}</span></button>`).join('')}</div></div>`;
 }
 function offerModal() {
   const L = S.L, p = E.getP(L, S.modal.pid); const kind = S.modal.kind;
