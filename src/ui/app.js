@@ -104,6 +104,7 @@ function attach(L) {
   E.repairSave(L); E.setSeed(L.rng || L.seed); S.L = L;
   if (!L.data && DATA) L.data = { classes: DATA.classes.classes || {}, udfa: DATA.classes.udfa || {} };
   E.ensureSettings(L);
+  if (!L.settings.gmFiring && L.gm.fired) { L.gm.fired = false; L.gm.jobSecurity = Math.max(L.gm.jobSecurity, 10); } // v41: firing off -> un-fire
   L.gm.reputation ??= 40; L.gm.teams ||= [L.userTid]; L.achievements ||= {}; L.tradeBlock ||= []; L.tradeOffers ||= []; L.shortlist ||= [];
   if (!L.players.some(p => p.tid === -2 && p.draft?.year > L.season)) E.ensureWorld(L);
   E.ensureFAPool(L); // old saves: never an empty free-agent list
@@ -848,7 +849,7 @@ PAGES.gm = () => {
   if (tb === 'profile') body = `<div class="card"><div class="kv"><span>Reputation</span><b>${g.reputation ?? 40} · ${E.repLabel(g.reputation ?? 40)}</b></div><div class="bar"><i style="width:${g.reputation ?? 40}%;background:var(--hdr)"></i></div>
     <div class="kv"><span>Legacy score</span><b>${g.legacy}</b></div><div class="kv"><span>Championships</span><b>${g.titles}</b></div><div class="kv"><span>Trades made</span><b>${g.trades || 0}</b></div><div class="kv"><span>Teams</span><b>${(g.teams || [L.userTid]).map(t => T(t).abbr).join(' → ')}</b></div>
     <div class="kv"><span>Achievements</span><b>${Object.keys(L.achievements || {}).length}/${E.ACHIEVEMENTS.length}</b></div><div class="muted" style="margin-top:6px">${esc(E.ARCHETYPES[g.archetype])}</div></div>`;
-  else if (tb === 'owner') body = ownerCard(L) + `<div class="card muted">Each preseason the owner sets one non-negotiable goal. Meeting or beating it raises job security; missing it badly can get you fired.</div>`;
+  else if (tb === 'owner') body = ownerCard(L) + `<div class="card muted">Each preseason the owner sets one non-negotiable goal. Meeting or beating it raises job security; missing it badly can (if 'GM can be fired' is on in Settings) get you fired.</div>`;
   else if (tb === 'ach') { const got = L.achievements || {}; body = `<div class="list">${E.ACHIEVEMENTS.map(([id, n, d]) => `<div class="it ach ${got[id] ? 'got' : ''}"><span style="font-size:22px">${got[id] ? icon('medal', { s: 24 }) : icon('lock', { s: 22 })}</span><div class="grow"><div class="nm">${esc(n)}</div><div class="meta">${esc(d)}${got[id] ? ` · ${seasonLbl(got[id])}` : ''}</div></div></div>`).join('')}</div>`; }
   else if (tb === 'career') body = `<div class="tscroll"><table><tr><th>Season</th><th>Team</th><th>W-L</th><th class="l">Goal</th><th>Grade</th></tr>${g.history.slice().reverse().map(h => `<tr><td>${seasonLbl(h.season)}</td><td>${T(h.tid).abbr}</td><td>${h.w}-${h.l}</td><td class="l" style="font-size:11px">${esc(h.goal)}${h.champ ? ' 🏆' : ''}</td><td><b>${h.grade}</b></td></tr>`).join('') || '<tr><td colspan="5" class="l muted">First season in progress.</td></tr>'}</table></div>`;
   else { const jm = L.gm.fired ? E.jobMarket(L) : (L.jobMarket || []); const rec = E.standings(L);

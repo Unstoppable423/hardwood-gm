@@ -301,13 +301,13 @@ export function enterAwards(L) {
   const poScore = isChamp ? 5 : madePO ? 1 + roundsWon : 0;
   const G82 = 82 / (L.seasonGames || 82); let delta = (ur.w * G82 - E.wins) * 0.9 + (poScore - E.poRound) * 6 + (isChamp ? 15 : 0);
   delta = delta >= 0 ? delta : delta / diff(L).ownerPatience;
-  L.gm.jobSecurity = clamp(Math.round(L.gm.jobSecurity + delta), -50, 100);
+  L.gm.jobSecurity = clamp(Math.round(L.gm.jobSecurity + delta), L.settings.gmFiring ? -50 : 10, 100); // v41: firing off -> floor 10
   L.gm.legacy += ur.w + roundsWon * 8 + (isChamp ? 40 : 0) - (madePO ? 0 : 5);
   L.gm.seasonsRun++; if (isChamp) L.gm.titles++;
   const grade = delta >= 10 ? 'A' : delta >= 3 ? 'B' : delta >= -3 ? 'C' : delta >= -10 ? 'D' : 'F';
   L.gm.history.push({ season: L.season, tid: L.userTid, w: ur.w, l: ur.l, goal: E.goal, grade, roundsWon, champ: isChamp, madePO, security: L.gm.jobSecurity });
   L.lastReview = { grade, delta: Math.round(delta), security: L.gm.jobSecurity, goal: E.goal, w: ur.w, l: ur.l, champ: isChamp, roundsWon, madePO };
-  if (L.gm.jobSecurity <= 0) {
+  if (L.settings.gmFiring && L.gm.jobSecurity <= 0) {
     L.gm.fired = true;
     msg(L, 'Owner', 'You are fired', `Results did not meet expectations (${E.goal}). We're making a change. Other teams may still want you.`, { pri: 'high' });
   } else msg(L, 'Owner', `Season review: grade ${grade}`, `Goal: ${E.goal}. Record ${ur.w}-${ur.l}. Job security now ${L.gm.jobSecurity}/100.`, { pri: 'high' });

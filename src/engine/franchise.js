@@ -24,6 +24,7 @@ export const FS_DEFAULTS = {
   retirement: true,
   morale: true,                          // player morale and trade requests
   cpuMoves: false,                       // with morale OFF: allow CPU-CPU trades and CPU free-agent poaching (off = stable rosters)
+  gmFiring: false,                       // v41: owner can fire the GM (off = never fired)
   careers: 'real',                       // real-life career arcs for real players: real | mostly | random
 };
 // morale off + cpuMoves off: players re-sign (user: at fair ask, no patience limit; CPU: always), no CPU-CPU trades or FA poaching
@@ -37,6 +38,7 @@ export function ensureSettings(L) {
   if (st.capMode == null && st.playerCap === false) st.capMode = 'off'; // old saves: "Salary cap: Off" was user-only
   for (const [k, v] of Object.entries(FS_DEFAULTS)) if (st[k] === undefined) st[k] = v;
   st.rosterMax = Math.max(st.rosterMin + 1, st.rosterMax);
+  if (!st.gmFiring && L.gm?.fired) { L.gm.fired = false; L.gm.jobSecurity = Math.max(L.gm.jobSecurity ?? 0, 10); } // v41: firing off -> un-fire
   applyRules(L);
   return st;
 }
@@ -68,6 +70,7 @@ export const FS_META = [
   ['progression', 'Progression speed', [[0.5, 'Slow'], [0.75, 'Slower'], [1, 'Normal'], [1.25, 'Faster'], [1.5, 'Fast']], 'Players'],
   ['morale', 'Morale & trade requests', YN, 'Players'], ['cpuMoves', 'CPU trades/free agency (when morale off)', YN, 'Players'],
   ['retirement', 'Retirements', YN, 'Players'],
+  ['gmFiring', 'GM can be fired', YN, 'League'],
   ['simDifficulty', 'Sim difficulty', [['Easy', 'Easy'], ['Normal', 'Normal'], ['Hard', 'Hard'], ['Insane', 'Insane']], 'League'],
   ['rosterMin', 'Roster minimum', [[8, '8'], [10, '10'], [12, '12'], [13, '13'], [14, '14']], 'League'],
   ['rosterMax', 'Roster maximum', [[13, '13'], [14, '14'], [15, '15'], [17, '17'], [20, '20']], 'League'],
