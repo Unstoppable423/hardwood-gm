@@ -99,7 +99,7 @@ async function loadData() {
 }
 function attach(L) {
   L.dcGlobal = dcGlobal();
-  E.reindex(L); E.setSeed(L.rng || L.seed); S.L = L;
+  E.repairSave(L); E.setSeed(L.rng || L.seed); S.L = L;
   if (!L.data && DATA) L.data = { classes: DATA.classes.classes || {}, udfa: DATA.classes.udfa || {} };
   E.ensureSettings(L);
   L.gm.reputation ??= 40; L.gm.teams ||= [L.userTid]; L.achievements ||= {}; L.tradeBlock ||= []; L.tradeOffers ||= []; L.shortlist ||= [];

@@ -10,7 +10,7 @@ import { ensureSettings, applyRules, deadlineDay, simEdge, seriesLen } from './f
 import { TEAMS, capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, DIFFICULTY, PHASE_LABEL } from './constants.js';
 import { careerMode, arcPot, applyPeakNow } from './careers.js';
 import { START_FUTURE, histPotFromPeak, attrTops, playerFromStats, finalizeStartRatings, prospectFromReal, generateProspect, generateVeteran, devTrait, marketValue,
-  setNextPid, getNextPid, genName, ovrFromAttrs } from './players.js';
+  setNextPid, getNextPid, POS_OVERRIDE, genName, ovrFromAttrs } from './players.js';
 import { simGame, autoRotation } from './sim.js';
 import { startPreseason } from './offseason.js';
 
@@ -18,7 +18,22 @@ export const VERSION = 1;
 // ---------- helpers ----------
 export const teamPlayers = (L, tid) => L.players.filter(p => p.tid === tid);
 export const getP = (L, pid) => L._pmap?.get(pid) ?? L.players.find(p => p.pid === pid);
-export function reindex(L) { L._pmap = new Map(L.players.map(p => [p.pid, p])); ensureNumbers(L); }
+export function reindex(L) { let mx = 0; for (const p of L.players) if (p.pid > mx) mx = p.pid; if (getNextPid() <= mx) setNextPid(mx + 1); // saves don't store the id counter: never hand out an id in use
+  L._pmap = new Map(L.players.map(p => [p.pid, p])); ensureNumbers(L); }
+// Old saves: the id counter restarted at 1 after loading, so generated prospects/players reused existing ids
+// (tapping one player opened another). Give every duplicate a fresh id; the player on a roster keeps his.
+export function repairSave(L) {
+  let mx = 0; for (const p of L.players) if (p.pid > mx) mx = p.pid; setNextPid(Math.max(getNextPid(), mx + 1));
+  const groups = new Map(); for (const p of L.players) { if (!groups.has(p.pid)) groups.set(p.pid, []); groups.get(p.pid).push(p); }
+  let fixed = 0;
+  for (const [, ps] of groups) if (ps.length > 1) {
+    const rank = (p) => (p.tid >= 0 ? 0 : p.tid === -1 ? 1 : p.retired ? 2 : 3) + (p.tid === -2 ? 1 : 0);
+    const keep = ps.slice().sort((a, b) => rank(a) - rank(b))[0];
+    for (const p of ps) if (p !== keep) { p.pid = getNextPid(); setNextPid(p.pid + 1); fixed++; }
+  }
+  if (!L.posFix1) { L.posFix1 = true; for (const p of L.players) if (POS_OVERRIDE[p.name] && p.real !== false) p.pos = POS_OVERRIDE[p.name]; } // once, so later manual changes stick
+  reindex(L); return fixed;
+}
 // Jersey numbers: real 1996-97 numbers from the data; anyone joining a team (draft, FA, trade) keeps his old number
 // if it's free there, otherwise takes a position-appropriate unused one. Retired numbers are not modeled.
 const NUM_POOL = { G: '1 2 3 4 5 7 8 9 10 11 12 13 14 15 20 21 22 23 24 25 30 31 0 6'.split(' '), F: '21 22 23 24 25 30 31 32 33 34 35 40 42 44 3 5 8 9 11 12 13 14 15 20'.split(' '), C: '33 34 40 41 42 43 44 45 50 52 54 55 00 0 30 31 32 35 11 12 13 14 15 21'.split(' ') };
