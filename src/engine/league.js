@@ -171,6 +171,10 @@ export function newLeague(data, opts = {}) {
     let amt = Math.max(minSalary(season), Math.round(marketValue(p, season) * (0.9 + rand() * 0.8) / 10) * 10);
     if (rookie) amt = rookieScale(season, p.draft.pick || 20);
     p.contract = { amt, exp, rookie };
+    // real 1996-97 contracts (public salary lists): real salary, real/inferred end year, raises along the real salary path
+    const rc = !H && season === 1997 && data.contracts?.players?.[p.name];
+    if (rc) { const ys = rc.years || [rc.amt]; const raise = ys.length > 1 ? clamp((ys.at(-1) - ys[0]) / (ys.length - 1) / ys[0], 0, 0.25) : 0;
+      p.contract = { amt: rc.amt, exp: rc.exp, rookie, real: true, ...(raise ? { raise: Math.round(raise * 1000) / 1000, base: rc.amt, first: season } : {}) }; }
     if (p.draft) p.draft.tid = null;
   }
   // Random rosters (PGM2-style "random league"): the real 1996-97 players are dealt to teams by a snake draft in random order
@@ -186,7 +190,8 @@ export function newLeague(data, opts = {}) {
     const ps = teamPlayers(L, t.tid).sort((a, b) => b.ovr - a.ovr);
     ps.slice(ROSTER_MAX).forEach(p => { p.tid = -1; p.contract = null; });
     let pr = payroll(L, t.tid); const lim = cap(L) * 1.45;
-    if (pr > lim) for (const p of teamPlayers(L, t.tid)) p.contract.amt = Math.round(p.contract.amt * lim / pr / 10) * 10;
+    if (pr > lim) { const est = teamPlayers(L, t.tid).filter(p => !p.contract.real); const fix = pr - est.reduce((a, p) => a + p.contract.amt, 0); // real deals stay as signed
+      const f = Math.max(0.3, (lim - fix) / Math.max(1, pr - fix)); if (f < 1) for (const p of est) p.contract.amt = Math.max(minSalary(season), Math.round(p.contract.amt * f / 10) * 10); }
   }
   // historic start: teams whose real roster the source only partly covers get generated fill-ins; plus a small FA pool
   if (H) { for (const t of L.teams) if (!t.inactive) while (teamPlayers(L, t.tid).length < ROSTER_MIN) { const f = generateVeteran(season, randInt(40, 50)); f.tid = t.tid; f.fillIn = true; f.contract = { amt: minSalary(season), exp: season, rookie: false }; L.players.push(f); }

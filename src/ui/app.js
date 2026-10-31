@@ -94,8 +94,8 @@ async function boot() {
 }
 async function loadData() {
   if (DATA) return DATA;
-  const [start, classes, history] = await Promise.all([fetch('data/start1996.json').then(r => r.json()), fetch('data/draftclasses.json').then(r => r.json()), fetch('data/history.json').then(r => r.json()).catch(() => null)]);
-  DATA = { start, classes, history }; return DATA;
+  const [start, classes, history, contracts] = await Promise.all([fetch('data/start1996.json').then(r => r.json()), fetch('data/draftclasses.json').then(r => r.json()), fetch('data/history.json').then(r => r.json()).catch(() => null), fetch('data/contracts1996.json').then(r => r.json()).catch(() => null)]);
+  DATA = { start, classes, history, contracts }; return DATA;
 }
 function attach(L) {
   L.dcGlobal = dcGlobal();
@@ -118,8 +118,11 @@ function render() {
   renderDrawer(); renderModal(); fitCta();
 }
 // keep the last row of every page clear of the fixed bottom action bar (its height varies with button count / safe area)
-function fitCta() { const app = $('#app'), c = app?.querySelector('.cta'); app?.style.setProperty('--ctaH', (c ? Math.ceil(c.getBoundingClientRect().height) : 0) + 'px'); }
+function fitCta() { const app = $('#app'), c = app?.querySelector('.cta'); const h = (c ? Math.ceil(c.getBoundingClientRect().height) : 0) + 'px'; app?.style.setProperty('--ctaH', h); document.documentElement.style.setProperty('--ctaH', h); }
 window.addEventListener('resize', () => fitCta());
+// Safari/in-app browsers: when a toolbar overlays the bottom of the layout viewport, lift the bar above it and pad the page by the same amount
+function fitVV() { const vv = window.visualViewport; const gap = vv && Math.abs((vv.scale || 1) - 1) < 0.01 ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0; document.documentElement.style.setProperty('--vvGap', (gap < 200 ? gap : 0) + 'px'); }
+window.visualViewport?.addEventListener('resize', fitVV); window.visualViewport?.addEventListener('scroll', fitVV); fitVV();
 function renderModal() {
   let m = $('#modal'); if (!S.modal) { m?.remove(); return; }
   if (!m) { m = document.createElement('div'); m.id = 'modal'; m.className = 'modal'; document.body.appendChild(m); }
@@ -465,7 +468,7 @@ PAGES.player = (pg0) => {
   const L = S.L, p = E.getP(L, pg0.pid); if (!p) return { title: 'Player', body: '<div class="card">Not found.</div>' };
   const own = p.tid === L.userTid; const tb = curTab('player', 'skills'); const pot = potOf(p); const age = E.ageNow(L, p);
   const shortl = (L.shortlist || []).includes(p.pid);
-  const top = `<div class="phead">${avatar(p, 88)}<div class="grow"><div style="font-weight:800;font-size:18px">${esc(p.name)}</div>
+  const top = `<div class="phead">${avatar(p, 64)}<div class="grow"><div style="font-weight:800;font-size:16px">${esc(p.name)}</div>
    <div class="muted">${p.tid >= 0 && p.num != null ? `#${esc(p.num)} · ` : ''}${p.pos} · Age ${age} · <span class="nw">${ht(p.h)}</span> · <span class="nw">${Math.round(p.w * 2.20462)} lb</span></div><div class="muted">${p.tid >= 0 ? esc(T(p.tid).city + ' ' + T(p.tid).name) : p.tid === -1 ? 'Free agent' : p.tid === -2 ? `${esc(p.college || p.country)} · ${p.draft?.year} draft` : p.tid === -6 ? 'Fantasy draft pool' : p.hiatus ? `Retired (${p.hiatus.from})` : 'Retired'}</div>
    ${p.injury ? `<div class="inj">${injIcon()} ${esc(p.injury.type)} — out ~${Math.ceil(p.injury.games)} game(s)</div>` : ''}</div>
    <div class="rbox"><div class="h">RATING</div><div class="n ${hideR(p) ? '' : qc(p.ovr)}">${hideR(p) ? '?' : R(p.ovr)}</div><div class="w">${devWord(p) || '&nbsp;'}</div></div></div>
@@ -490,13 +493,13 @@ function skillsTab(p) {
   const at = (k) => { const v = hid ? null : R[k]; const d = prev && !hid && prev[k] != null ? R[k] - prev[k] : 0; return `<div class="at"><span class="grow">${E.ATTR_LABEL[k]}</span>${d ? `<span class="${d > 0 ? 'up' : 'dn'}" style="margin-right:4px">${d > 0 ? '↑' : '↓'}${Math.abs(d)}</span>` : ''}${sq(v)}</div>`; };
   const roles = hid ? [] : E.roleRatings(p);
   const pen = E.posPenalty(p);
-  return `${roles.length ? `<div class="roles">${roles.map(([n, v]) => `<div><div class="muted">${n}</div>${sq(v, 'big')}</div>`).join('')}</div>` : ''}
+  return `${p.tid === S.L.userTid ? `<div class="sect">Position</div><div class="pill-seg">${E.POS.map(pos => `<button class="${p.pos === pos ? 'on' : ''}" data-a="chgPos" data-pid="${p.pid}" data-pos="${pos}">${pos}</button>`).join('')}</div>` : ''}
+  ${roles.length ? `<div class="roles">${roles.map(([n, v]) => `<div><div class="muted">${n}</div>${sq(v, 'big')}</div>`).join('')}</div>` : ''}
   ${p.tid >= 0 && T(p.tid).staff?.HC && !hid ? (() => { const hc = T(p.tid).staff.HC, f = E.playerFit(p, hc.off, hc.def); return `<div class="card fitline">Scheme fit · <b>${esc(hc.off)}</b> <span class="fitw ${E.fitWord(f.off).toLowerCase()}">${E.fitWord(f.off)}</span> · <b>${esc(hc.def)}</b> <span class="fitw ${E.fitWord(f.def).toLowerCase()}">${E.fitWord(f.def)}</span></div>`; })() : ''}
   ${pen ? `<div class="card" style="color:var(--q1)">Playing out of position (natural ${p.natPos}). Adaptability ${p.adapt ?? 50} — penalty −${pen} OVR, shrinking each offseason.</div>` : ''}
   <div class="grp"><h4>Physical</h4><div class="attrs">${['ath', 'sta', 'dur', 'reb'].map(at).join('')}</div></div>
   <div class="grp"><h4>Mental</h4><div class="attrs">${at('iq')}<div class="at"><span class="grow">Work Ethic</span><span class="tag" style="background:${{ High: 'var(--q4)', Medium: 'var(--q3)', Low: 'var(--q1)' }[p.traits.work] || 'var(--sub)'}">${esc(String(p.traits.work).toUpperCase())}</span></div>${p.adapt != null || p.tid === S.L.userTid ? `<div class="at"><span class="grow">Adaptability</span>${sq(p.adapt ?? 50)}</div>` : ''}</div></div>
   <div class="grp"><h4>Technical</h4><div class="attrs">${['ins', 'out', 'sco', 'pas', 'han', 'idef', 'pdef', 'blk', 'stl'].filter(k => p.ratings[k] != null).map(at).join('')}</div></div>
-  ${p.tid === S.L.userTid ? `<div class="sect">Position</div><div class="pill-seg">${E.POS.map(pos => `<button class="${p.pos === pos ? 'on' : ''}" data-a="chgPos" data-pid="${p.pid}" data-pos="${pos}">${pos}</button>`).join('')}</div>` : ''}
   ${p.awards.length || p.hof ? `<div class="sect">Honors</div><div class="card">${p.hof ? '<span class="tag" style="background:var(--gold)">HALL OF FAME</span> ' : ''}${awardSummary(p)}</div>` : ''}`;
 }
 function awardSummary(p) {
