@@ -33,7 +33,7 @@ function emptyLine() { return { min: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, 
 
 // team-level hot/cold night (shooting form) so lopsided matchups aren't near-certain; tuned with scripts/realism.mjs
 export let FORM_SD = 0.09; export function setFormSd(v) { FORM_SD = v; }
-const LINEUP_CACHE = new Map();
+const LINEUP_CACHE = new Map(); const RS_BONUS = 9; // real starter, still on his real team: wins within ~5 display OVR (internal scale is wider)
 export function autoRotation(players) {
   // starters: best at each slot-ish; minutes by OVR rank
   const avail = players.filter(p => !p.injury).sort((a, b) => b.ovr - a.ovr);
@@ -41,10 +41,10 @@ export function autoRotation(players) {
   const ADJ = { PG: ['SG'], SG: ['PG', 'SF'], SF: ['SG', 'PF'], PF: ['SF', 'C'], C: ['PF'] };
   const pen = (slot, p) => { const el = eligiblePos(p); return el.includes(slot) || p.pos === slot ? 0 : el.some(x => ADJ[slot].includes(x)) ? 4 : 14; };
   // best total over the top 10 healthy players (5 slots, exhaustive: 10P5 = 30k, cheap)
-  const pool = avail.slice(0, 8); const SL = ['PG', 'SG', 'SF', 'PF', 'C']; let bestSet = null, bv = -1e9; const cur = [];
+  const pool = [...avail.slice(0, 8), ...avail.slice(8).filter(p => p.rs != null && p.rs === p.tid)].slice(0, 10); const SL = ['PG', 'SG', 'SF', 'PF', 'C']; let bestSet = null, bv = -1e9; const cur = [];
   const rec = (i, used, sc) => { if (i === 5) { if (sc > bv) { bv = sc; bestSet = cur.slice(); } return; }
-    for (let j = 0; j < pool.length; j++) if (!(used & (1 << j))) { cur[i] = pool[j]; rec(i + 1, used | (1 << j), sc + pool[j].ovr - pen(SL[i], pool[j])); } };
-  const key = pool.map(p => p.pid + ':' + p.pos + ':' + Math.round(p.ovr)).join(',');
+    for (let j = 0; j < pool.length; j++) if (!(used & (1 << j))) { cur[i] = pool[j]; rec(i + 1, used | (1 << j), sc + pool[j].ovr + (pool[j].rs != null && pool[j].rs === pool[j].tid ? RS_BONUS : 0) - pen(SL[i], pool[j])); } };
+  const key = pool.map(p => p.pid + ':' + p.pos + ':' + Math.round(p.ovr) + (p.rs === p.tid ? 's' : '')).join(',');
   const hit = LINEUP_CACHE.get(key); if (hit) bestSet = hit.map(i => pool[i]); else { rec(0, 0, 0); if (LINEUP_CACHE.size > 3000) LINEUP_CACHE.clear(); LINEUP_CACHE.set(key, (bestSet || []).map(p => pool.indexOf(p))); }
   const bySlot = {}; (bestSet || []).forEach((p, i) => { bySlot[SL[i]] = p; });
   const starters = ['PG', 'SG', 'SF', 'PF', 'C'].map(k => bySlot[k]).filter(Boolean);

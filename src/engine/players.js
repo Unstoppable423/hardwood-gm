@@ -111,7 +111,7 @@ function heightTilt(hcm) { return (inches(hcm) - 79) / 3; }
 export const POS_OVERRIDE = { 'Kobe Bryant': 'SG', 'Robert Horry': 'PF', 'Michael Jordan': 'SG', 'Scottie Pippen': 'SF', 'Reggie Miller': 'SG', 'Ray Allen': 'SG', 'Allen Iverson': 'PG', 'Grant Hill': 'SF', "Shaquille O'Neal": 'C', 'Tim Duncan': 'PF', 'Kevin Garnett': 'PF', 'Dirk Nowitzki': 'PF', 'Vince Carter': 'SG', 'Tracy McGrady': 'SF', 'Clyde Drexler': 'SG', 'Mitch Richmond': 'SG', 'Penny Hardaway': 'PG', 'Anfernee Hardaway': 'PG', 'Gary Payton': 'PG', 'John Stockton': 'PG', 'Jason Kidd': 'PG', 'Karl Malone': 'PF', 'Charles Barkley': 'PF', 'Dennis Rodman': 'PF', 'Hakeem Olajuwon': 'C', 'David Robinson': 'C', 'Patrick Ewing': 'C', 'Alonzo Mourning': 'C', 'Shawn Kemp': 'PF', 'Chris Webber': 'PF', 'Glen Rice': 'SF', 'Latrell Sprewell': 'SG', 'Paul Pierce': 'SF', 'Kevin Durant': 'SF', 'LeBron James': 'SF', 'Dwyane Wade': 'SG', 'Carmelo Anthony': 'SF', 'Yao Ming': 'C', 'Steve Nash': 'PG', 'Pau Gasol': 'PF', 'Tony Parker': 'PG', 'Manu Ginobili': 'SG' };
 // multi-position eligibility: primary + 1-2 secondaries playable with no penalty
 export const POS_ELIG = { 'Kobe Bryant': ['SG', 'SF'], 'Derek Fisher': ['PG', 'SG'], 'LeBron James': ['SF', 'PF', 'PG'], 'Tim Duncan': ['PF', 'C'], 'Kevin Garnett': ['PF', 'C'],
-  'Scottie Pippen': ['SF', 'PF', 'SG'], 'Michael Jordan': ['SG', 'SF'], 'Magic Johnson': ['PG', 'SF'], 'Robert Horry': ['PF', 'SF'], 'Rasheed Wallace': ['PF', 'C'], 'Nick Van Exel': ['PG', 'SG'], 'Eddie Jones': ['SG', 'SF'],
+  'Scottie Pippen': ['SF', 'PF', 'SG'], 'Michael Jordan': ['SG', 'SF'], 'Magic Johnson': ['PG', 'SF'], 'Robert Horry': ['PF', 'SF'], 'Rasheed Wallace': ['PF', 'C'], 'Nick Van Exel': ['PG', 'SG'], 'Eddie Jones': ['SG', 'SF'], 'Ron Harper': ['SG', 'PG'], 'Toni Kukoc': ['PF', 'SF'],
   'Grant Hill': ['SF', 'PG'], 'Tracy McGrady': ['SF', 'SG'], 'Vince Carter': ['SG', 'SF'], 'Dirk Nowitzki': ['PF', 'C'], 'Chris Webber': ['PF', 'C'], 'Karl Malone': ['PF'], "Shaquille O'Neal": ['C'], 'Dennis Rodman': ['PF', 'C'],
   'Allen Iverson': ['PG', 'SG'], 'Penny Hardaway': ['PG', 'SG'], 'Anfernee Hardaway': ['PG', 'SG'], 'Toni Kukoc': ['PF', 'SF'], 'Charles Barkley': ['PF', 'SF'], 'Paul Pierce': ['SF', 'SG'], 'Kevin Durant': ['SF', 'PF'] };
 const ADJ_UP = { PG: 'SG', SG: 'SF', SF: 'PF', PF: 'C', C: null }, ADJ_DN = { PG: null, SG: 'PG', SF: 'SG', PF: 'SF', C: 'PF' };
@@ -119,6 +119,14 @@ const POS_H = { PG: 188, SG: 196, SF: 201, PF: 206, C: 211 };
 export function derivePos2(p) { const nat = p.natPos || p.pos; const up = ADJ_UP[nat], dn = ADJ_DN[nat]; if (!up) return [dn]; if (!dn) return [up]; return [(p.h || POS_H[nat]) >= POS_H[nat] ? up : dn]; }
 export function eligiblePos(p) { if (!p.pos2) { const e = POS_ELIG[p.name]; p.pos2 = e && p.real !== false ? e.slice(1) : derivePos2(p); } return [p.natPos || p.pos, ...p.pos2.filter(x => x !== (p.natPos || p.pos))]; }
 export function posLabel(p) { const e = eligiblePos(p); return [p.pos, ...e.filter(x => x !== p.pos)].slice(0, 3).join('/'); }
+// real 1996-97 opening-night-style starting fives (lineup tiebreak only; ratings unchanged)
+export const REAL_STARTERS = { CHI: ['Ron Harper', 'Michael Jordan', 'Scottie Pippen', 'Dennis Rodman', 'Luc Longley'], UTA: ['John Stockton', 'Jeff Hornacek', 'Bryon Russell', 'Karl Malone', 'Greg Ostertag'],
+  LAL: ['Nick Van Exel', 'Eddie Jones', 'Robert Horry', 'Elden Campbell', "Shaquille O'Neal"], MIA: ['Tim Hardaway', 'Voshon Lenard', 'Jamal Mashburn', 'P.J. Brown', 'Alonzo Mourning'],
+  SEA: ['Gary Payton', 'Hersey Hawkins', 'Detlef Schrempf', 'Shawn Kemp', 'Jim McIlvaine'], HOU: ['Matt Maloney', 'Clyde Drexler', 'Mario Elie', 'Charles Barkley', 'Hakeem Olajuwon'],
+  NYK: ['Chris Childs', 'Allan Houston', 'Larry Johnson', 'Charles Oakley', 'Patrick Ewing'], ORL: ['Anfernee Hardaway', 'Dennis Scott', 'Nick Anderson', 'Horace Grant', 'Rony Seikaly'],
+  PHO: ['Jason Kidd', 'Rex Chapman', 'Cedric Ceballos', 'Danny Manning', 'John Williams'], IND: ['Mark Jackson', 'Reggie Miller', 'Derrick McKey', 'Dale Davis', 'Rik Smits'],
+  DET: ['Lindsey Hunter', 'Joe Dumars', 'Grant Hill', 'Otis Thorpe', 'Terry Mills'], ATL: ['Mookie Blaylock', 'Steve Smith', 'Tyrone Corbin', 'Christian Laettner', 'Dikembe Mutombo'],
+  POR: ['Kenny Anderson', 'Isaiah Rider', 'Clifford Robinson', 'Rasheed Wallace', 'Arvydas Sabonis'], CHH: ['Muggsy Bogues', 'Anthony Mason', 'Glen Rice', 'Larry Johnson', 'Vlade Divac'] };
 const ovPos = (name, pos) => POS_OVERRIDE[name] || pos;
 export function playerFromStats(raw, season) {
   const pos = ovPos(raw.n, /^(PG|SG|SF|PF|C)$/.test(raw.pos || '') ? raw.pos : posFrom(raw.h, raw.astp, raw.drb)); // historic rows carry the listed position

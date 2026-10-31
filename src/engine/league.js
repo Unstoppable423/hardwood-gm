@@ -10,7 +10,7 @@ import { ensureSettings, applyRules, deadlineDay, simEdge, seriesLen } from './f
 import { TEAMS, capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, DIFFICULTY, PHASE_LABEL } from './constants.js';
 import { careerMode, arcPot, applyPeakNow } from './careers.js';
 import { START_FUTURE, histPotFromPeak, attrTops, playerFromStats, finalizeStartRatings, prospectFromReal, generateProspect, generateVeteran, devTrait, marketValue,
-  setNextPid, getNextPid, POS_OVERRIDE, POS_ELIG, eligiblePos, genName, ovrFromAttrs } from './players.js';
+  setNextPid, getNextPid, POS_OVERRIDE, REAL_STARTERS, POS_ELIG, eligiblePos, genName, ovrFromAttrs } from './players.js';
 import { simGame, autoRotation } from './sim.js';
 import { startPreseason } from './offseason.js';
 
@@ -22,6 +22,9 @@ export function reindex(L) { let mx = 0; for (const p of L.players) if (p.pid > 
   L._pmap = new Map(L.players.map(p => [p.pid, p])); ensureNumbers(L); }
 // Old saves: the id counter restarted at 1 after loading, so generated prospects/players reused existing ids
 // (tapping one player opened another). Give every duplicate a fresh id; the player on a roster keeps his.
+export function markRealStarters(L) { if (L.rsMarked || L.season < 1997 || L.season > 1999) return; L.rsMarked = true;
+  for (const t of L.teams) { const names = REAL_STARTERS[t.abbr]; if (!names) continue; for (const p of L.players) if (p.tid === t.tid && names.includes(p.name)) { p.rs = t.tid; } }
+  for (const t of L.teams) if (REAL_STARTERS[t.abbr] && t.autoRotation !== false) t.rotation = null; }
 export function repairSave(L) {
   let mx = 0; for (const p of L.players) if (p.pid > mx) mx = p.pid; setNextPid(Math.max(getNextPid(), mx + 1));
   const groups = new Map(); for (const p of L.players) { if (!groups.has(p.pid)) groups.set(p.pid, []); groups.get(p.pid).push(p); }
@@ -38,6 +41,7 @@ export function repairSave(L) {
   // lineups store player ids: drop any lineup that names someone not on that team (stale/colliding ids) so it is rebuilt
   for (const t of L.teams) { const r = t.rotation; if (!r) continue; const ids = new Set(L.players.filter(p => p.tid === t.tid).map(p => p.pid));
     if (!r.starters?.every(id => ids.has(id)) || new Set(r.starters).size !== r.starters.length || Object.keys(r.minutes || {}).some(id => !ids.has(+id))) t.rotation = null; }
+  markRealStarters(L);
   reindex(L); return fixed;
 }
 // Jersey numbers: real 1996-97 numbers from the data; anyone joining a team (draft, FA, trade) keeps his old number
@@ -232,6 +236,7 @@ export function newLeague(data, opts = {}) {
   HOOKS.newLeague?.(L);
   if (opts.start && opts.start !== 'PRESEASON') HOOKS.applyStart?.(L, opts.start);
   L.rng = getSeed(); reindex(L);
+  markRealStarters(L);
   return L;
 }
 export function rookieScale(season, pick) { return Math.max(minSalary(season), Math.round(capFor(season) * 0.105 * Math.pow(0.93, pick - 1) / 10) * 10); }
