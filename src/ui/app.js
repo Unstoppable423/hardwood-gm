@@ -1005,7 +1005,7 @@ PAGES.fapool = () => {
   <div class="sect">Add players</div><div class="card"><div class="grid2"><div><div class="muted">Name</div><input id="fpName" placeholder="New player" maxlength="40"></div><div><div class="muted">Position</div><select id="fpPos">${E.POS.map(x => `<option>${x}</option>`).join('')}</select></div>
    <div><div class="muted">Age</div><input id="fpAge" type="number" value="27" min="18" max="42"></div><div><div class="muted">OVR</div><input id="fpOvr" type="number" value="75" min="40" max="99"></div></div>
    <button class="go" style="width:100%;margin-top:8px" data-a="fpCreate" ${open ? '' : 'disabled'}>Create free agent</button>
-   <div class="muted" style="margin-top:10px">Bring back a retired / overseas player</div><input data-a="fpQ" value="${esc(S.fpQ || '')}" placeholder="Search name">
+   <div class="muted" style="margin-top:10px">Bring back a retired / overseas player</div> <button class="sm" data-a="fpBackYoung">Bring back all young players</button><input data-a="fpQ" value="${esc(S.fpQ || '')}" placeholder="Search name">
    <div class="list">${back.map(p => `<div class="it"><div class="grow"><div class="nm">${esc(p.name)}</div><div class="meta">${p.pos} · Age ${p.age} · ${p.overseas ? 'overseas' : `retired ${p.retiredSeason}`}</div></div>${sq(p.ovr)}<button class="sm" data-a="fpBack" data-pid="${p.pid}" ${open ? '' : 'disabled'}>Add</button></div>`).join('') || '<div class="it muted">No matches.</div>'}</div></div>
   <div class="sect">Pool</div><div class="list">${ps.slice(0, 120).map(terms).join('')}</div>` };
 };
@@ -1167,6 +1167,7 @@ const A = {
     if (!r.ok) return toast(r.error, 3000); S.fpT = null; autosave(); render(); toast('Terms saved'); },
   fpClear(d) { E.faSetTerms(S.L, +d.pid, {}); S.fpT = null; autosave(); render(); toast('Back to market value'); },
   fpRemove(d) { const p = E.getP(S.L, +d.pid); const r = E.faRemove(S.L, +d.pid); if (!r.ok) return toast(r.error); autosave(); render(); toast(`${p.name} removed (overseas)`); },
+  fpBackYoung() { const n = S.L.players.filter(p => p.retired && p.tid === -3 && p.age < 30).length; if (!n) return toast('No retired players under 30'); if (!confirm(`Bring back all ${n} retired / overseas players under 30 to free agency?`)) return; const r = E.faAddYoungRetired(S.L); if (!r.ok) return toast(r.error); autosave(); render(); toast(`${r.n} players added to the pool`); },
   fpBack(d) { const r = E.faAddExisting(S.L, +d.pid); if (!r.ok) return toast(r.error); autosave(); render(); toast('Added to the pool'); },
   fpCreate() { const v = (id) => document.getElementById(id)?.value; const r = E.faCreate(S.L, { name: (v('fpName') || '').trim() || undefined, pos: v('fpPos'), age: +v('fpAge'), ovr: +v('fpOvr') });
     if (!r.ok) return toast(r.error); autosave(); S.ed = null; go('editPlayer', { pid: r.pid }); toast('Created — fine-tune in the editor'); },

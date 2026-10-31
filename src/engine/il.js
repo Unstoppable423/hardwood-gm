@@ -4,6 +4,7 @@
 import { HOOKS, teamPlayers, getP, msg, news, logTx } from './league.js';
 import { ROSTER_MAX, ROSTER_MIN, minSalary } from './constants.js';
 import { sign, release, freeAgents } from './offseason.js';
+import { managedSet } from './control.js';
 
 export const IL_MAX = 3, IL_MIN_GAMES = 5;
 export const ilPlayers = (L, tid) => teamPlayers(L, tid).filter(p => p.il);
@@ -61,7 +62,7 @@ function aiIL(L) {
   }
   // roster floor: AI refills to 13 active right away; the user is warned, then the league signs minimum players after 7 days
   if (L.phase === 'REGULAR') {
-    for (const t of L.teams) if (!t.inactive) { if (t.inactive || t.tid === L.userTid) continue; while (activeCount(L, t.tid) < ROSTER_MIN) { const f = bestFA(L); if (!f) break; sign(L, f, t.tid, minSalary(L.season), 1); } }
+    for (const t of L.teams) if (!t.inactive) { if (t.inactive || t.tid === L.userTid) continue; if (managedSet(L).has(t.tid)) continue; while (activeCount(L, t.tid) < ROSTER_MAX) { const f = bestFA(L); if (!f) break; sign(L, f, t.tid, minSalary(L.season), 1); } }
     const u = L.userTid, n = activeCount(L, u);
     if (n >= ROSTER_MIN) L.shortSince = null;
     else if (L.shortSince == null) { L.shortSince = L.day; msg(L, 'League Office', 'Roster below the minimum', `You have ${n} active players; the league requires ${ROSTER_MIN}. Sign free agents within 7 days or the league will sign minimum players for you.`, { pri: 'high' }); }

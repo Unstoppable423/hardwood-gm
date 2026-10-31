@@ -120,6 +120,14 @@ export function faRemove(L, pid) { // leaves the pool: signs overseas (can be br
   p.tid = -3; p.retired = true; p.overseas = true; p.retiredSeason = L.season; delete p.faAsk; delete p.faInterest;
   logTx(L, { type: 'edit', text: 'Removed from the free-agent pool (signed overseas)' }, [p.pid]); reindex(L); return { ok: true };
 }
+// v40: every retired / overseas player under 30 returns to the FA pool at once
+export function faAddYoungRetired(L, maxAge = 30) {
+  if (!faPoolOpen(L)) return { ok: false, error: 'The FA pool can be edited in the offseason.', n: 0 };
+  const ps = L.players.filter(p => p.retired && p.tid === -3 && p.age < maxAge); let n = 0;
+  for (const p of ps) { delete p.hiatus; if (faAddExisting(L, p.pid).ok) n++; }
+  if (n) news(L, `${n} retired/overseas young player${n > 1 ? 's' : ''} returned to free agency.`, 'fa', null);
+  return { ok: true, n };
+}
 export function faAddExisting(L, pid) { // retired / overseas player returns, or a commissioner release (no dead money)
   const p = getP(L, pid); if (!faPoolOpen(L)) return { ok: false, error: 'The FA pool can be edited in the offseason.' };
   if (!p || p.tid === -1) return { ok: false, error: 'Already a free agent.' };

@@ -4,7 +4,7 @@ import { teamFit } from './schemes.js';
 import { applyHistory, lotteryRule } from './history.js';
 import { ERA, gpReq } from './era.js';
 import { managedSet, homeTid } from './control.js';
-import { applyArc, careerMode, realTeamTid, arcYearsFrom, applyPeakNow, DEFAULT_PEAKS } from './careers.js';
+import { applyArc, careerOf, careerMode, realTeamTid, arcYearsFrom, applyPeakNow, DEFAULT_PEAKS } from './careers.js';
 import { taxActive, taxLine, applyRules, stableRosters } from './franchise.js';
 import { capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, LOTTERY_WEIGHTS, PHASES } from './constants.js';
 import { marketValue, progress, anchorRatings, attrTops, anchorAttrTails, longevity, devTrait, generateVeteran, generateProspect, prospectFromReal, dispRating, ovrFromAttrs } from './players.js';
@@ -87,11 +87,12 @@ export function startPreseason(L, first = false) {
 }
 export function aiRosterFix(L) {
   const fas = () => L.players.filter(p => p.tid === -1 && !p.retired).sort((a, b) => b.ovr - a.ovr);
+  const man = managedSet(L); ensureFAPool(L);
   for (const t of L.teams) if (!t.inactive) {
-    if (t.tid === L.userTid) continue;
+    if (t.tid === L.userTid || man.has(t.tid)) continue;
     let ps = teamPlayers(L, t.tid);
     while (ps.length > ROSTER_MAX) { const worst = ps.sort((a, b) => (a.ovr + (a.pot - a.ovr) * 0.3) - (b.ovr + (b.pot - b.ovr) * 0.3))[0]; release(L, worst, true); ps = teamPlayers(L, t.tid); }
-    while (ps.length < ROSTER_MIN) {
+    while (ps.length < ROSTER_MAX) { // v40: CPU teams always carry a full 15
       let f = fas()[0];
       if (!f) { f = generateVeteran(L.season, randInt(42, 52)); f.tid = -1; resetSeasonStats(f, L.season); L.players.push(f); reindex(L); }
       sign(L, f, t.tid, minSalary(L.season), 1, { ng: true }); ps = teamPlayers(L, t.tid);
@@ -102,14 +103,19 @@ export function aiRosterFix(L) {
 }
 // v39: CPU teams swap a fading end-of-bench vet for a younger, clearly better FA (cheap deal). Never user/managed teams.
 export function cpuUpgrade(L, perTeam = 1) {
-  if (stableRosters(L)) return 0; let n = 0; const man = managedSet(L); const minS = minSalary(L.season);
-  const act = L.teams.filter(t => !t.inactive); const ranked = act.map(t => ({ tid: t.tid, o: teamOvr(L, t.tid) + (L.phase === 'REGULAR' ? (t.won || 0) - (t.lost || 0) : 0) * 0.3 })).sort((a, b) => b.o - a.o).map(x => x.tid);
+  let n = 0; const stable = stableRosters(L); // v40: runs with morale off too (bench swaps only; no trades/poaching)
+  const man = managedSet(L); const minS = minSalary(L.season);
+  const act = L.teams.filter(t => !t.inactive); const st = L.phase === 'REGULAR' ? standings(L) : null; // v40: real W/L (teams have no won/lost fields; standings are computed)
+  const ranked = act.map(t => { const r = st?.[t.tid]; const gp = r?.gp || 0; return { tid: t.tid, o: teamOvr(L, t.tid) + (gp ? (r.pct - 0.5) * 40 * Math.min(1, gp / 30) : 0) }; }).sort((a, b) => b.o - a.o).map(x => x.tid);
   const third = Math.round(act.length / 3);
+  // stable rosters in the offseason: don't grab another team's unsigned free agents (no poaching)
+  const ok = (f) => !(stable && L.phase !== 'REGULAR' && f.formerTid >= 0 && !f.waived);
   for (const t of L.teams) { if (t.inactive || t.tid === L.userTid || man.has(t.tid)) continue;
     const rk = ranked.indexOf(t.tid); const strat = rk < third ? 'win' : rk >= act.length - third ? 'rebuild' : 'mid';
     let all = teamPlayers(L, t.tid).filter(p => !p.il);
     while (all.length > ROSTER_MAX) { release(L, all.sort((a, b) => (a.ovr + (a.pot - a.ovr) * 0.3) - (b.ovr + (b.pot - b.ovr) * 0.3))[0], true); all = teamPlayers(L, t.tid).filter(p => !p.il); }
-    while (all.length < ROSTER_MIN) { const f = L.players.filter(x => x.tid === -1 && !x.retired && !x.injury).sort((a, b) => b.ovr - a.ovr)[0]; if (!f) break; sign(L, f, t.tid, minS, 1, { ng: true }); all = teamPlayers(L, t.tid).filter(p => !p.il); }
+    ensureFAPool(L);
+    while (all.length < ROSTER_MAX) { const f = L.players.filter(x => x.tid === -1 && !x.retired && !x.injury && ok(x)).sort((a, b) => b.ovr - a.ovr)[0]; if (!f) break; sign(L, f, t.tid, minS, 1, { ng: true }); all = teamPlayers(L, t.tid).filter(p => !p.il); }
     for (let k = 0; k < perTeam; k++) {
       const ps = teamPlayers(L, t.tid); if (ps.length < ROSTER_MIN) break;
       const w = strat === 'win' ? 0.85 : strat === 'rebuild' ? 0.35 : 0.6;
@@ -117,8 +123,8 @@ export function cpuUpgrade(L, perTeam = 1) {
       const protect = (p) => p.rs === p.tid || p.injury || (p.contract?.amt || 0) > minS * 2.2 || (strat !== 'win' && p.draft?.year >= L.season - 2) || (strat === 'win' && p.draft?.year >= L.season - 2 && dispRating(p.pot ?? p.ovr) >= 72);
       const cand = ps.filter(p => !protect(p)).sort((a, b) => val(a) - val(b))[0]; if (!cand) break;
       const need = strat === 'rebuild' ? 4 : 3; const cv = val(cand);
-      const fa = L.players.filter(f => f.tid === -1 && !f.retired && !f.injury && val(f) >= cv + need && (strat !== 'rebuild' || f.age <= 27)).sort((a, b) => val(b) - val(a))[0]; if (!fa) break;
-      release(L, cand, true); sign(L, fa, t.tid, Math.max(minS, Math.round(Math.min(marketValue(fa, L.season), minS * 2) / 10) * 10), 1, { ng: true });
+      const fa = L.players.filter(f => f.tid === -1 && !f.retired && !f.injury && ok(f) && val(f) >= cv + need && (strat !== 'rebuild' || f.age <= 27)).sort((a, b) => val(b) - val(a))[0]; if (!fa) break;
+      release(L, cand, true); cand.waived = true; sign(L, fa, t.tid, Math.max(minS, Math.round(Math.min(marketValue(fa, L.season), minS * 2) / 10) * 10), 1, { ng: true });
       news(L, `${t.abbr} waive ${cand.name} and sign ${fa.name}${strat === 'win' ? ' (win-now)' : strat === 'rebuild' ? ' (youth movement)' : ''}.`, 'fa', t.tid); n++; }
   }
   return n;
@@ -339,19 +345,29 @@ export function convinceRetire(L, pid) {
 // real-career gap: the player steps away (no Hall of Fame ballot or jersey ceremony yet) and comes back in free agency
 export function startHiatus(L, p, until) {
   const ex = p.tid; const mine = ex === L.userTid;
-  p.hiatus = { from: L.season, until, age: p.age, exTid: ex }; p.retired = true; p.retiredSeason = L.season; p.tid = -3; p.contract = null;
+  p.hiatus = { from: L.season - 1, until, age: p.age, exTid: ex }; p.retired = true; p.retiredSeason = L.season; p.tid = -3; p.contract = null;
   news(L, `${p.name} retires${ex >= 0 ? ` (${L.teams[ex].abbr})` : ''} at age ${p.age}.`, 'retire', ex >= 0 ? ex : null);
   if (mine) msg(L, 'Front Office', `${p.name} retires`, `${p.name} has decided to step away from basketball. Players sometimes un-retire — watch free agency.`);
+}
+// v40: a player retired by the sim (not a real-career hiatus) whose real career resumes this season comes back too (e.g. Jordan 2001-02)
+export function realComebacks(L) {
+  if (careerMode(L) === 'off' || L.settings.retirement === false) return 0; let n = 0;
+  for (const p of L.players) { if (!p.retired || p.hiatus || p.tid !== -3 || p.overseas || p.hofSeason) continue;
+    const c = careerOf(L, p); const K = L.season - 1; if (!c || !c.a[String(K)] || c.a[String(K - 1)] || p.retiredSeason == null || p.retiredSeason >= L.season) continue;
+    p.hiatus = { from: p.retiredSeason - 1, until: K, age: p.age, exTid: p.formerTid ?? -1 }; endHiatus(L, p); n++; }
+  return n;
 }
 export function endHiatus(L, p) {
   const h = p.hiatus; p.age = h.age + (h.until - h.from) - 1; p.retired = false; delete p.retiredSeason; p.tid = -1; delete p.hiatus; p.comebackSeason = L.season;
   resetSeasonStats(p, L.season);
-  applyArc(L, p, L.season); // ratings for the comeback season
-  const tid = realTeamTid(L, p, L.season);
+  applyArc(L, p, L.season - 1); // ratings for the comeback season (career keys = season start year = L.season - 1)
+  const tid = realTeamTid(L, p, L.season - 1);
   news(L, `${p.name} is coming out of retirement at ${p.age + 1}!`, 'sign', null);
-  if (tid != null && tid !== L.userTid && careerMode(L) === 'real' && teamPlayers(L, tid).length < ROSTER_MAX) {
+  if (tid != null && !managedSet(L).has(tid) && careerMode(L) === 'real' && teamPlayers(L, tid).length >= ROSTER_MAX) { // v40: CPU rosters are full (15); waive the weakest cheap player to make room
+    const minS = minSalary(L.season); const cut = teamPlayers(L, tid).filter(q => (q.contract?.amt || 0) <= minS * 2.2).sort((a, b) => a.ovr - b.ovr)[0]; if (cut) { release(L, cut, true); cut.waived = true; } }
+  if (tid != null && !managedSet(L).has(tid) && careerMode(L) === 'real' && (L.phase !== 'REGULAR' || teamPlayers(L, tid).length < ROSTER_MAX)) { // offseason: training camp trims CPU rosters to 15
     const ask = askingAmount(L, p, tid, 'fa', 3); const aff = canAfford(L, tid, ask);
-    sign(L, p, tid, aff.ok ? ask : minSalary(L.season), arcYearsFrom(L, p, L.season));
+    sign(L, p, tid, aff.ok ? ask : minSalary(L.season), arcYearsFrom(L, p, L.season - 1));
     news(L, `${p.name} signs with the ${teamName(L, tid)} in his comeback.`, 'fa', tid);
   } else { p.formerTid = h.exTid >= 0 ? h.exTid : undefined; msg(L, 'Front Office', `${p.name} is un-retiring`, `${p.name} is back and available in free agency${tid === L.userTid ? ' — and he wants to play for you' : ''}.`); if (tid === L.userTid) p.faInterest = 1.25; }
 }
@@ -637,7 +653,7 @@ function leaveResign(L) {
 }
 // ================= free agency =================
 export function freeAgents(L) { return L.players.filter(p => p.tid === -1 && !p.retired); }
-export function enterFA(L) { for (const p of L.players) if (p.hiatus && p.hiatus.until <= L.season) endHiatus(L, p);
+export function enterFA(L) { realComebacks(L); for (const p of L.players) if (p.hiatus && p.hiatus.until <= L.season - 1) endHiatus(L, p);
   L.fa = { offers: {}, round: 1 }; aiFAOffers(L, 1); news(L, 'Free agency is open!', 'fa'); }
 export function faRound(L) { return L.phase.startsWith('FA') ? +L.phase[2] : 0; }
 export function userOffer(L, pid, amt, years, raise = 0) {
@@ -744,16 +760,17 @@ function enterSummer(L) {
   const arcRetire = [];
   const arcHiatus = [];
   for (const p of L.players) if (p.injury?.real) p.injury = null; // last year's real lost season is over
-  for (const p of L.players) { if (p.retired || p.tid === -3 || p.tid === -2) continue; const r = applyArc(L, p, L.season);
-    if (r === 'retire') { if (p.age >= 33 && !(p.tid >= 0 && p.contract && p.contract.exp > L.season && p.age < 37)) arcRetire.push(p); } // v39: real-career end only retires veterans else if (r?.hiatus) arcHiatus.push([p, r.hiatus]);
+  for (const p of L.players) { if (p.retired || p.tid === -3 || p.tid === -2) continue; const r = applyArc(L, p, L.season - 1); // v40: off-by-one fix (L.season 1998 = 1997-98 = career key 1997)
+    if (r === 'retire') { if (p.age >= 33 && !(p.tid >= 0 && p.contract && p.contract.exp > L.season && p.age < 37)) arcRetire.push(p); } // v39: real-career end only retires veterans
+    else if (r?.hiatus) arcHiatus.push([p, r.hiatus]); // v40: restored (was commented out in v39)
     else if (r?.out) { p.injury = { type: 'Out for the season', games: 100, gamesTotal: 100, real: true }; if (p.tid === L.userTid) msg(L, 'Trainer', `${p.name} will miss the season`, `${p.name} will sit out the ${L.season}-${String(L.season + 1).slice(2)} season (his real career had a lost year here).`); } }
   if (L.settings.retirement !== false) {
     for (const p of arcRetire) { const mine = p.tid === L.userTid; retire(L, p); if (mine) msg(L, 'Front Office', `${p.name} retires`, `${p.name} has announced his retirement, as in his real career.`); }
-    for (const [p, until] of arcHiatus) if (!(p.tid >= 0 && p.contract && p.contract.exp > L.season)) startHiatus(L, p, until); // under contract: keeps playing
+    for (const [p, until] of arcHiatus) if (p.age >= 30 && !(p.tid >= 0 && p.contract && p.contract.exp > L.season)) startHiatus(L, p, until); // under contract: keeps playing
   }
   if (!L.ratingAnchor.attr?.sco) L.ratingAnchor.attr = { ...attrTops(L.players), ...(L.ratingAnchor.attr || {}) }; anchorAttrTails(L.players, L.ratingAnchor.attr);
   L.anchorShift = anchorRatings(L.players, L.ratingAnchor);
-  for (const p of L.players) if (!p.retired && p.tid >= -1 && (p.peakTarget != null || DEFAULT_PEAKS[p.name])) applyPeakNow(L, p, L.season); // peak targets survive the league anchor
+  for (const p of L.players) if (!p.retired && p.tid >= -1 && (p.peakTarget != null || DEFAULT_PEAKS[p.name])) applyPeakNow(L, p, L.season - 1); // peak targets survive the league anchor
   if (PROG_CAP.on) for (const p of L.players) if (!p.retired && p.tid >= -1 && p.prevOvr != null && p.prevRatings) capYearChange(p);
   for (const p of L.players) {
     if (p.tid !== L.userTid || p.prevOvr == null) continue; const d = p.ovr - p.prevOvr;
@@ -798,6 +815,9 @@ export function applyStart(L, start) {
 }
 // keep a pool of fringe veterans available all year (min-deal depth); old saves are topped up on load
 export function ensureFAPool(L, n = 24) {
+  // v40: enough for every CPU team to reach 15, plus a buffer
+  const man = managedSet(L); let open = 0; for (const t of L.teams) if (!t.inactive && t.tid !== L.userTid && !man.has(t.tid)) open += Math.max(0, ROSTER_MAX - teamPlayers(L, t.tid).length);
+  n = Math.max(n, open + 24);
   let have = freeAgents(L).length; let added = 0;
   while (have < n) { const f = generateVeteran(L.season, randInt(40, 52)); f.tid = -1; resetSeasonStats(f, L.season); L.players.push(f); have++; added++; }
   if (added) reindex(L); return added;
