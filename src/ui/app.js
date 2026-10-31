@@ -605,7 +605,7 @@ function descOffer(L, o) {
 }
 PAGES.trade = () => {
   const L = S.L; const tb = curTab('trade', 'offers'); const offers = L.tradeOffers || [];
-  const top = tabs('trade', [['offers', `Offers${offers.length ? ' (' + offers.length + ')' : ''}`], ['block', 'Trade Block'], ['machine', 'Propose'], ['all', 'All Players']], 'offers');
+  const top = tabs('trade', [['offers', `Offers${offers.length ? ' (' + offers.length + ')' : ''}`], ['block', 'Trade Block'], ['machine', 'Propose'], ['commish', 'Commissioner'], ['all', 'All Players']], 'offers');
   let body = '';
   const closed = !tradeOpen(L) ? `<div class="card" style="color:var(--q1)">${L.phase === 'PLAYOFFS' ? 'Trades are closed during the playoffs.' : 'The trade deadline has passed. Trades reopen after the season.'}</div>` : '';
   if (tb === 'offers') {
@@ -616,6 +616,19 @@ PAGES.trade = () => {
       : `<div class="card muted">No trade offers. Put players on your Trade Block and AI teams that need them — usually contenders — will call with offers. Offers expire after two weeks or at the deadline.</div>`);
     const tx = L.transactions.filter(t => t.type === 'trade').slice(0, 10);
     body += `<div class="sect">Recent league trades</div><div class="list">${tx.map(t => `<div class="it" style="font-size:13px">${esc(t.text)}</div>`).join('') || '<div class="it muted">None yet.</div>'}</div>`;
+  } else if (tb === 'commish') {
+    const ct = S.ct ||= { a: L.userTid, b: L.teams.find(t => !t.inactive && t.tid !== L.userTid).tid, ap: [], bp: [], ak: [], bk: [] };
+    const teamSel = (side) => `<select data-ct="${side}" aria-label="Team ${side.toUpperCase()}" style="width:100%">${L.teams.filter(t => !t.inactive).map(t => `<option value="${t.tid}" ${ct[side] === t.tid ? 'selected' : ''}>${esc(t.city + ' ' + t.name)}</option>`).join('')}</select>`;
+    const sideList = (side) => { const tid = ct[side], sel = ct[side + 'p'], selk = ct[side + 'k'];
+      const ps = E.teamPlayers(L, tid).sort((x, y) => y.ovr - x.ovr); const pk = L.picks.filter(k => k.tid === tid).sort((x, y) => x.season - y.season || x.round - y.round);
+      return `<div class="list">${ps.map(p => `<div class="it ${sel.includes(p.pid) ? 'hl' : ''}"><button class="sm ${sel.includes(p.pid) ? 'go' : ''}" data-a="ctTog" data-s="${side}" data-pid="${p.pid}" aria-label="Select">${sel.includes(p.pid) ? '✓' : '+'}</button><div class="grow"><div class="nm"><span class="plink" data-a="player" data-pid="${p.pid}">${esc(p.name)}</span></div><div class="meta">${E.posLabel(p)} ${R(p.ovr)} · ${p.age}y · ${M(p.contract?.amt || 0)}/${yrsLeft(p)}y</div></div></div>`).join('')}
+        ${pk.map(k => `<div class="it ${selk.includes(k.id) ? 'hl' : ''}"><button class="sm ${selk.includes(k.id) ? 'go' : ''}" data-a="ctTog" data-s="${side}" data-k="${k.id}">${selk.includes(k.id) ? '✓' : '+'}</button><div class="grow small">${k.season} Rd ${k.round} pick (${T(k.orig).abbr})</div></div>`).join('')}</div>`; };
+    const n = ct.ap.length + ct.bp.length + ct.ak.length + ct.bk.length;
+    body = `<div class="muted" style="padding:4px 14px">Trade between any two teams. Force Trade ignores AI acceptance.</div>
+    <div class="grid2" style="padding:0 10px">${teamSel('a')}${teamSel('b')}</div>
+    <div class="sect">${esc(T(ct.a).abbr)} send (${ct.ap.length + ct.ak.length})</div>${sideList('a')}
+    <div class="sect">${esc(T(ct.b).abbr)} send (${ct.bp.length + ct.bk.length})</div>${sideList('b')}
+    <div style="padding:10px"><button class="go" style="width:100%" data-a="ctForce" ${n && ct.a !== ct.b ? '' : 'disabled'}>Force Trade</button></div>`;
   } else if (tb === 'block') {
     const ps = E.teamPlayers(L, L.userTid).sort((a, b) => b.ovr - a.ovr);
     body = closed + `<div class="muted" style="padding:4px 14px">Tap BLOCK to shop a player. Offers arrive as the season goes on.</div><div class="list">${ps.map(p => playerRow(p, { extra: `<button class="sm ${(L.tradeBlock || []).includes(p.pid) ? 'red' : 'ghost'}" data-a="block" data-pid="${p.pid}">${(L.tradeBlock || []).includes(p.pid) ? 'ON BLOCK' : 'BLOCK'}</button>` })).join('')}</div>
@@ -1242,6 +1255,13 @@ const A = {
   tradeFor(d) { const p = E.getP(S.L, +d.pid); S.trade = { tid: p.tid, a: [], ap: [], b: [p.pid], bp: [] }; S.tab.trade = 'machine'; root('trade'); },
   tAddSuggest(d) { const tr = S.trade; if (d.kind === 'p') tr.a.push(+d.id); else tr.ap.push(d.id); render(); },
   tclear() { S.trade = { tid: S.trade.tid, a: [], ap: [], b: [], bp: [] }; render(); },
+  ctTog(d) { const ct = S.ct; const key = d.s + (d.k ? 'k' : 'p'); const v = d.k ? d.k : +d.pid; const arr = ct[key]; const i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); else arr.push(v); const y = window.scrollY; render(); window.scrollTo(0, y); },
+  ctForce() { const L = S.L, ct = S.ct; if (ct.a === ct.b) return toast('Pick two different teams');
+    const o = { tidA: ct.a, tidB: ct.b, aPids: ct.ap.slice(), aPicks: ct.ak.slice(), bPids: ct.bp.slice(), bPicks: ct.bk.slice() };
+    const warn = []; for (const [tid, out, inn] of [[ct.a, o.aPids, o.bPids], [ct.b, o.bPids, o.aPids]]) { const n = E.teamPlayers(L, tid).length - out.length + inn.length; if (n > E.ROSTER_MAX) warn.push(`${T(tid).abbr} would have ${n} players (max ${E.ROSTER_MAX})`); if (n < E.ROSTER_MIN) warn.push(`${T(tid).abbr} would have ${n} players (min ${E.ROSTER_MIN})`); }
+    const v = E.validateTrade(L, o); if (!v.ok) warn.push(v.error);
+    if (!confirm(`Force this trade?${warn.length ? '\n\nWarnings:\n• ' + warn.join('\n• ') : ''}`)) return;
+    const text = E.executeTrade(L, o); S.ct = { ...ct, ap: [], bp: [], ak: [], bk: [] }; toast('Trade done'); (L.inbox ||= []).unshift({ id: L.msgId++, season: L.season, day: L.day, from: 'Commissioner', subject: 'Trade completed', body: text, read: false }); autosave(); render(); },
   propose() { const L = S.L, tr = S.trade; const o = { tidA: L.userTid, tidB: tr.tid, aPids: tr.a, aPicks: tr.ap, bPids: tr.b, bPicks: tr.bp }; const ev = E.evaluateTrade(L, o); if (!ev.ok) return toast(ev.error); const t = E.executeTrade(L, o); L.inbox.unshift({ id: L.msgId++, season: L.season, day: L.day, from: 'Front Office', subject: 'Trade completed', body: t, read: false }); toast('Trade accepted!'); S.trade = null; autosave(); render(); },
   staffRole(d) { S.staffRole = d.r; render(); },
   hire(d) { const r = E.hireStaff(S.L, +d.sid); if (!r.ok) return toast(r.error); toast('Hired!'); autosave(); render(); },
@@ -1268,6 +1288,7 @@ document.addEventListener('pointerdown', (e) => { const el = e.target.closest('[
 ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => document.addEventListener(ev, () => clearInterval(holdT)));
 document.addEventListener('change', (e) => {
   const el = e.target;
+  if (el.dataset.ct) { S.ct[el.dataset.ct] = +el.value; S.ct[el.dataset.ct + 'p'] = []; S.ct[el.dataset.ct + 'k'] = []; render(); return; }
   if (el.dataset.ng) { const k = el.dataset.ng; let v = el.value; if (v === 'true') v = true; else if (v === 'false') v = false; else if (!isNaN(+v) && k !== 'gmName') v = +v; S.ng[k] = v; if (['archetype', 'rosters', 'start', 'startYear'].includes(k)) render(); return; }
   if (el.dataset.set) { const k = el.dataset.set; let v = el.value; if (v === 'true') v = true; else if (v === 'false') v = false; else if (!isNaN(+v)) v = +v; S.L.settings[k] = v; E.ensureSettings(S.L); autosave(); render(); toast('Setting saved'); return; }
   if (el.dataset.ngf) { const k = el.dataset.ngf; let v = el.value; if (v === 'true') v = true; else if (v === 'false') v = false; else if (!isNaN(+v)) v = +v; if (k === 'draftClasses') S.ng.draftClasses = v; else (S.ng.franchise ||= {})[k] = v; render(); return; }
