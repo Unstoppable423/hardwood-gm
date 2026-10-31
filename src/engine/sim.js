@@ -32,7 +32,9 @@ function composites(p) {
 function emptyLine() { return { min: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, orb: 0, drb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, pm: 0, gs: 0 }; }
 
 // team-level hot/cold night (shooting form) so lopsided matchups aren't near-certain; tuned with scripts/realism.mjs
-export let FORM_SD = 0.09; export function setFormSd(v) { FORM_SD = v; }
+export let FORM_SD = 0.04; export function setFormSd(v) { FORM_SD = v; }
+// how strongly rating gaps move shot/turnover odds (1 = original); <1 compresses records without inflating score variance
+export let TALENT = 0.65; export function setTalent(v) { TALENT = v; }
 const LINEUP_CACHE = new Map(); const RS_BONUS = 9; // real starter, still on his real team: wins within ~5 display OVR (internal scale is wider)
 export function autoRotation(players) {
   // starters: best at each slot-ish; minutes by OVR rank
@@ -178,7 +180,7 @@ export function simGame(home, away, opts = {}) {
         say(`Reach-in foul on ${fmt(fouler)}.`); oreb = true; first = false; if (clock <= 0) break; continue;
       }
       // turnover
-      if (rand() < clamp(0.152 + (defP - offH) / 650 + off.ox.tov + def.dx.tov, 0.09, 0.23)) {
+      if (rand() < clamp(0.152 + TALENT * (defP - offH) / 650 + off.ox.tov + def.dx.tov, 0.09, 0.23)) {
         const tov = weighted(off.on, c => c.use * (115 - c.han)); off.line[tov.pid].tov++;
         if (rand() < 0.53 + def.dx.stl) { const st = weighted(def.on, c => Math.pow(c.stl / 50, 1.15) * (0.6 + c.pdef / 250)); def.line[st.pid].stl++; say(`${fmt(st)} picks off ${fmt(tov)}! Turnover.`); }
         else say(`${fmt(tov)} turns it over.`);
@@ -188,9 +190,9 @@ export function simGame(home, away, opts = {}) {
       const sh = weighted(off.on, c => Math.pow(c.use, ox.useExp));
       const type = weighted([1, 2, 3], t => t === 1 ? sh.wRim * ox.rim * (ox.postBig && sh.big ? ox.postBig : 1) : t === 2 ? sh.wMid * ox.mid : sh.w3 * ox.three);
       const rating = type === 1 ? sh.rim : type === 2 ? sh.mid : sh.tre;
-      let pMake = type === 1 ? 0.505 + (rating - 60) * 0.0055 - (defI - 60) * 0.0045
-        : type === 2 ? 0.36 + (rating - 60) * 0.005 - (defP - 60) * 0.003
-          : 0.262 + ERA.tp + (rating - 60) * 0.0058 - (defP - 60) * 0.002;
+      let pMake = type === 1 ? 0.505 + TALENT * ((rating - 60) * 0.0055 - (defI - 60) * 0.0045)
+        : type === 2 ? 0.36 + TALENT * ((rating - 60) * 0.005 - (defP - 60) * 0.003)
+          : 0.262 + ERA.tp + TALENT * ((rating - 60) * 0.0058 - (defP - 60) * 0.002);
       pMake += (off.side === 0 ? homeAdv : 0) + (opts.edge ? opts.edge[off.side] : 0) + coachEdge + off.offEdge - def.defEdge + off.form + (type === 1 ? dx.rim : type === 2 ? dx.mid : dx.three);
       pMake = clamp(pMake, 0.12, 0.8);
       const foulP = type === 1 ? 0.24 + ERA.drawFoul : type === 2 ? 0.065 : 0.015;

@@ -250,7 +250,7 @@ PAGES.home = () => {
       const lg = lastUserGame(L); if (lg) { const home = lg.h === L.userTid, won = (home ? lg.hs > lg.as : lg.as > lg.hs);
         parts.push(`<div class="list"><div class="it" data-a="box" data-gid="${lg.gid}"><span class="tag" style="background:${won ? 'var(--q4)' : 'var(--q1)'}">${won ? 'W' : 'L'}</span><div class="grow"><div class="nm">Last game: ${home ? 'vs' : '@'} ${esc(T(home ? lg.a : lg.h).name)}</div><div class="meta">${T(lg.a).abbr} ${lg.as} - ${lg.hs} ${T(lg.h).abbr}${lg.ot ? ' OT' : ''} · tap for box score</div></div><span class="chev">${icon('back', { s: 18, cls: 'flip' })}</span></div></div>`); }
       parts.push(ownerCard(L, true), divisionCard(L));
-      cta.push(`<button class="blue" data-a="holiday">Go on Holiday</button>`, `<button class="go" data-a="playNext">Play Game</button>`);
+      cta.push(`<button class="blue" data-a="holiday">Go on Holiday</button>`, `<button style="flex:.7" data-a="simOneDay">Sim 1 Day</button>`, `<button class="go" data-a="playNext">Play Game</button>`);
       break;
     }
     case 'PLAYOFFS': {
@@ -259,7 +259,7 @@ PAGES.home = () => {
       const mine = P.series.find(s => s.round === P.round && (s.hi === L.userTid || s.lo === L.userTid) && !E.seriesOver(s));
       if (mine) { const gn = mine.wh + mine.wl; parts.push(matchup(L, ([1, 1, 0, 0, 1, 0, 1][gn] ? mine.hi : mine.lo), ([1, 1, 0, 0, 1, 0, 1][gn] ? mine.lo : mine.hi), `Game ${gn + 1}`)); }
       parts.push(`<div class="sect">${['First Round', 'Conference Semifinals', 'Conference Finals', 'Finals'][P.round - 1]}</div>${seriesList(P.series.filter(s => s.round === P.round))}`);
-      cta.push(`<button class="blue" data-a="simRound">Sim Round</button>`, `<button class="go" data-a="playNext">${mine ? 'Play Game' : 'Sim Day'}</button>`);
+      cta.push(`<button class="blue" data-a="simRound">Sim Round</button>`, ...(mine ? [`<button style="flex:.7" data-a="simOneDay">Sim Game</button>`] : []), `<button class="go" data-a="playNext">${mine ? 'Play Game' : 'Sim Day'}</button>`, `<button class="ghost" style="flex:.6" data-a="nav" data-p="league" data-t="playoffs">Bracket</button>`);
       break;
     }
     case 'AWARDS': parts.push(summaryCard(L)); cta.push(`<button class="go" data-a="advance">Continue to Staff</button>`); break;
@@ -530,7 +530,10 @@ function txSection(p) {
   return `<div class="sect">Transactions</div><div class="card tx">${rows.length || dr ? rows.map(t => `<div class="txr"><span class="txs">${seasonLbl(t.season)}</span><span class="txi txi-${t.type}">${icon2[t.type] || ''}</span><span class="grow">${esc(t.text)}</span></div>`).join('') + (dr ? `<div class="txr"><span class="txs">${d.year}</span><span class="txi">${icon('ball', { s: 14 })}</span><span class="grow">${esc(dr)}</span></div>` : '') : '<div class="muted">No transactions since 1996.</div>'}</div>`;
 }
 function gamesTab(p) {
-  const L = S.L; const rows = [];
+  const L = S.L; const gl = p.stats?.glog;
+  if (gl?.length) return `<div class="muted small" style="padding:2px 14px">${p.stats.season - 1}-${String(p.stats.season).slice(2)} · ${gl.length} game(s)</div><div class="tscroll"><table><tr><th class="l">Game</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>FG</th><th>+/-</th></tr>${gl.slice().reverse().map(([gid, opp, home, win, min, pts, reb, ast, fgm, fga, pm, po]) =>
+    `<tr ${L.games[gid] ? `data-a="box" data-gid="${gid}"` : ''}><td class="l">${po ? '<span class="tag" style="background:var(--gold)">PO</span> ' : ''}${home ? 'vs' : '@'} ${T(opp).abbr} <span class="${win ? 'tg' : 'tr'}">${win ? 'W' : 'L'}</span></td><td>${min}</td><td><b>${pts}</b></td><td>${reb}</td><td>${ast}</td><td>${fgm}-${fga}</td><td>${pm > 0 ? '+' : ''}${pm}</td></tr>`).join('')}</table></div>`;
+  const rows = [];
   for (const gid of Object.keys(L.games).reverse()) { const G = L.games[gid]; const l = G.box[p.tid]?.[p.pid] || G.box[G.h]?.[p.pid] || G.box[G.a]?.[p.pid]; if (l) rows.push({ G, l, gid }); if (rows.length >= 20) break; }
   if (!rows.length) return '<div class="card muted">No recent game logs. (Box scores are kept for recent games.)</div>';
   return `<div class="tscroll"><table><tr><th class="l">Game</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>FG</th><th>+/-</th></tr>${rows.map(({ G, l, gid }) => { const home = G.box[G.h]?.[p.pid]; const opp = home ? G.a : G.h; const won = home ? G.hs > G.as : G.as > G.hs;
@@ -619,18 +622,19 @@ PAGES.trade = () => {
     const tx = L.transactions.filter(t => t.type === 'trade').slice(0, 10);
     body += `<div class="sect">Recent league trades</div><div class="list">${tx.map(t => `<div class="it" style="font-size:13px">${esc(t.text)}</div>`).join('') || '<div class="it muted">None yet.</div>'}</div>`;
   } else if (tb === 'commish') {
-    const ct = S.ct ||= { a: L.userTid, b: L.teams.find(t => !t.inactive && t.tid !== L.userTid).tid, ap: [], bp: [], ak: [], bk: [] };
-    const teamSel = (side) => `<select data-ct="${side}" aria-label="Team ${side.toUpperCase()}" style="width:100%">${teamsAZ(L).map(t => `<option value="${t.tid}" ${ct[side] === t.tid ? 'selected' : ''}>${esc(t.city + ' ' + t.name)}</option>`).join('')}</select>`;
-    const sideList = (side) => { const tid = ct[side], sel = ct[side + 'p'], selk = ct[side + 'k'];
-      const ps = E.teamPlayers(L, tid).sort((x, y) => y.ovr - x.ovr); const pk = L.picks.filter(k => k.tid === tid).sort((x, y) => x.season - y.season || x.round - y.round);
-      return `<div class="list">${ps.map(p => `<div class="it ${sel.includes(p.pid) ? 'hl' : ''}"><button class="sm ${sel.includes(p.pid) ? 'go' : ''}" data-a="ctTog" data-s="${side}" data-pid="${p.pid}" aria-label="Select">${sel.includes(p.pid) ? '✓' : '+'}</button><div class="grow"><div class="nm"><span class="plink" data-a="player" data-pid="${p.pid}">${esc(p.name)}</span></div><div class="meta">${E.posLabel(p)} ${R(p.ovr)} · ${p.age}y · ${M(p.contract?.amt || 0)}/${yrsLeft(p)}y</div></div></div>`).join('')}
-        ${pk.map(k => `<div class="it ${selk.includes(k.id) ? 'hl' : ''}"><button class="sm ${selk.includes(k.id) ? 'go' : ''}" data-a="ctTog" data-s="${side}" data-k="${k.id}">${selk.includes(k.id) ? '✓' : '+'}</button><div class="grow small">${k.season} Rd ${k.round} pick (${T(k.orig).abbr})</div></div>`).join('')}</div>`; };
-    const n = ct.ap.length + ct.bp.length + ct.ak.length + ct.bk.length;
-    body = `<div class="muted" style="padding:4px 14px">Trade between any two teams. Force Trade ignores AI acceptance.</div>
-    <div class="grid2" style="padding:0 10px">${teamSel('a')}${teamSel('b')}</div>
-    <div class="sect">${esc(T(ct.a).abbr)} send (${ct.ap.length + ct.ak.length})</div>${sideList('a')}
-    <div class="sect">${esc(T(ct.b).abbr)} send (${ct.bp.length + ct.bk.length})</div>${sideList('b')}
-    <div style="padding:10px"><button class="go" style="width:100%" data-a="ctForce" ${n && ct.a !== ct.b ? '' : 'disabled'}>Force Trade</button></div>`;
+    let ct = S.ct; if (!ct || !ct.teams) ct = S.ct = { teams: [L.userTid, teamsAZ(L).find(t => t.tid !== L.userTid).tid], mv: {} };
+    const nT = ct.teams.length; const destOf = (key) => ct.mv[key];
+    const teamSel = (i) => `<div class="row" style="gap:6px"><select data-ctt="${i}" aria-label="Team ${i + 1}" style="flex:1">${teamsAZ(L).map(t => `<option value="${t.tid}" ${ct.teams[i] === t.tid ? 'selected' : ''}>${esc(t.city + ' ' + t.name)}</option>`).join('')}</select>${nT > 2 ? `<button class="sm ghost" data-a="ctDel" data-i="${i}" aria-label="Remove team">✕</button>` : ''}</div>`;
+    const destSel = (key, from) => nT > 2 ? `<select data-ctd="${key}" aria-label="Send to" style="max-width:96px">${ct.teams.filter(t => t !== from).map(t => `<option value="${t}" ${destOf(key) === t ? 'selected' : ''}>→ ${esc(T(t).abbr)}</option>`).join('')}</select>` : '';
+    const sideList = (tid) => { const ps = E.teamPlayers(L, tid).sort((x, y) => y.ovr - x.ovr); const pk = L.picks.filter(k => k.tid === tid).sort((x, y) => x.season - y.season || x.round - y.round);
+      const row = (key, label, meta) => { const on = destOf(key) != null; return `<div class="it ${on ? 'hl' : ''}"><button class="sm ${on ? 'go' : ''}" data-a="ctTog" data-key="${key}" data-from="${tid}" aria-label="Select">${on ? '✓' : '+'}</button><div class="grow">${label}${meta ? `<div class="meta">${meta}</div>` : ''}</div>${on ? destSel(key, tid) : ''}</div>`; };
+      return `<div class="list">${ps.map(p => row('p:' + p.pid, `<div class="nm"><span class="plink" data-a="player" data-pid="${p.pid}">${esc(p.name)}</span></div>`, `${E.posLabel(p)} ${R(p.ovr)} · ${p.age}y · ${M(p.contract?.amt || 0)}/${yrsLeft(p)}y`)).join('')}${pk.map(k => row('k:' + k.id, `<span class="small">${k.season} Rd ${k.round} pick (${T(k.orig).abbr})</span>`, '')).join('')}</div>`; };
+    const keys = Object.keys(ct.mv); const nm = (key) => key[0] === 'p' ? E.getP(L, +key.slice(2))?.name : key.slice(2).replace(/-(\d)-/, ' R$1 ');
+    const summary = keys.length ? `<div class="card small">${ct.teams.map(t => `<div><b>${esc(T(t).abbr)} get:</b> ${keys.filter(k => ct.mv[k] === t).map(k => esc(nm(k))).join(', ') || '—'}</div>`).join('')}</div>` : '';
+    body = `<div class="muted" style="padding:4px 14px">Trade between any 2-4 teams. Force Trade ignores AI acceptance.</div>
+    <div style="padding:0 10px;display:grid;gap:6px">${ct.teams.map((_, i) => teamSel(i)).join('')}${nT < 4 ? `<button class="sm" data-a="ctAdd">+ Add team</button>` : ''}</div>
+    ${ct.teams.map(t => `<div class="sect">${esc(T(t).city + ' ' + T(t).name)} send</div>${sideList(t)}`).join('')}
+    ${summary}<div style="padding:10px"><button class="go" style="width:100%" data-a="ctForce" ${keys.length && new Set(ct.teams).size === nT ? '' : 'disabled'}>Force Trade</button></div>`;
   } else if (tb === 'block') {
     const ps = E.teamPlayers(L, L.userTid).sort((a, b) => b.ovr - a.ovr);
     body = closed + `<div class="muted" style="padding:4px 14px">Tap BLOCK to shop a player. Offers arrive as the season goes on.</div><div class="list">${ps.map(p => playerRow(p, { extra: `<button class="sm ${(L.tradeBlock || []).includes(p.pid) ? 'red' : 'ghost'}" data-a="block" data-pid="${p.pid}">${(L.tradeBlock || []).includes(p.pid) ? 'ON BLOCK' : 'BLOCK'}</button>` })).join('')}</div>
@@ -733,6 +737,7 @@ PAGES.draft = () => {
     const best = all[0];
     if (onClock && slot.tid === L.userTid) { const offs = E.clockOffers(L); S.clockOffs = offs;
       if (offs.length) body += `<div class="sect">Offers for your pick</div>${offs.map((o, i) => `<div class="card"><div class="row">${disc(o.tidB, 34)}<div class="grow" style="font-size:13px">${esc(T(o.tidB).name)} offer ${o.bPicks.map(id => { const k = L.picks.find(z => z.id === id); return `${k.season} Rd ${k.round} (${T(k.orig).abbr})`; }).join(' + ')}</div><button class="sm go" data-a="clockAccept" data-i="${i}">Accept</button></div></div>`).join('')}`; }
+    if (!D.modeChosen && D.idx === 0) body = `<div class="card" style="border:2px solid var(--gold)"><b>The draft is starting — pick #1 is on the clock.</b><div class="muted small" style="margin:4px 0 8px">Choose how to run it (you can change this any time with the toggle below).</div><div class="grid2"><button class="${L.settings.draftAll ? 'go' : ''}" data-a="draftMode" data-v="all">Control all picks</button><button class="${!L.settings.draftAll ? 'go' : ''}" data-a="draftMode" data-v="mine">Just my picks</button></div></div>` + body;
     body = `<div class="row" style="padding:6px 10px"><div class="grow small muted">${L.settings.draftAll ? 'You choose every pick, for every team.' : 'You choose your own picks only.'}</div><button class="sm ${L.settings.draftAll ? 'go' : 'ghost'}" data-a="draftAllTog">Control all picks: ${L.settings.draftAll ? 'ON' : 'OFF'}</button></div>` + body;
     if (slot && onClock && slot.tid !== L.userTid) body = `<div class="card" style="padding:8px 12px"><b>On the clock: ${esc(T(slot.tid).city + ' ' + T(slot.tid).name)}</b> · pick #${slot.pick}. Tap a prospect to choose for them.</div>` + body;
     if (best) body += `<div class="sect">Best player available</div><div class="list">${prospectRow(best, 1, onClock)}</div>`;
@@ -790,9 +795,19 @@ function recordsTab(L) {
   <div class="sect">Season averages</div><div class="card">${['pts', 'reb', 'ast', 'stl', 'blk'].map(k => s[k] ? `<div class="kv"><span>${k.toUpperCase()}/G</span><b>${s[k].v} · ${esc(s[k].name)} (${s[k].season})</b></div>` : '').join('') || '<div class="muted">After the first season.</div>'}</div>
   ${['pts', 'reb', 'ast'].map(k => `<div class="sect">Career ${k.toUpperCase()} (this league)</div><div class="list">${top(k).map(x => `<div class="it" data-a="player" data-pid="${x.p.pid}"><div class="grow nm">${esc(x.p.name)}</div><b>${x.t[k]}</b></div>`).join('') || '<div class="it muted">—</div>'}</div>`).join('')}`;
 }
+function bracketView(L) {
+  const P = L.playoffs; const rounds = [...new Set(P.series.map(s => s.round))].sort((a, b) => a - b); const maxR = Math.max(...rounds);
+  const cell = (s) => { const w = s.winner; const ln = (tid, seed, wins) => `<div class="brl ${w === tid ? 'win' : w != null ? 'out' : ''}"><span class="sd">${seed ?? ''}</span>${esc(T(tid).abbr)}<b>${wins}</b></div>`;
+    return `<div class="brs ${S.brSel === s.id ? 'sel' : ''}" data-a="brSel" data-id="${s.id}">${ln(s.hi, s.hiSeed, s.wh)}${ln(s.lo, s.loSeed, s.wl)}</div>`; };
+  const col = (conf, r) => `<div class="brc"><div class="brh">${r === maxR ? 'Finals' : r === maxR - 1 ? 'Conf F' : 'Rd ' + r}</div>${P.series.filter(s => s.round === r && (r === maxR || s.conf === conf)).sort((a, b) => a.slot - b.slot).map(cell).join('')}</div>`;
+  const cols = [...rounds.filter(r => r < maxR).map(r => col('W', r)), col(null, maxR), ...rounds.filter(r => r < maxR).reverse().map(r => col('E', r))];
+  const sel = P.series.find(s => s.id === S.brSel);
+  const games = sel ? `<div class="sect">${esc(T(sel.hi).abbr)} vs ${esc(T(sel.lo).abbr)} · ${sel.wh}-${sel.wl}</div><div class="list">${(sel.games || []).map((g, i) => `<div class="it" ${L.games[g.gid] ? `data-a="box" data-gid="${g.gid}"` : ''}><b style="width:56px">Game ${i + 1}</b><div class="grow">${esc(T(g.a).abbr)} ${g.as} @ ${esc(T(g.h).abbr)} ${g.hs}</div></div>`).join('') || '<div class="it muted">Not started.</div>'}</div>` : '<div class="muted small" style="padding:4px 14px">Tap a series to see its games.</div>';
+  return `<div class="muted small" style="padding:2px 14px">West ← → East</div><div class="bracket">${cols.join('')}</div>${games}`;
+}
 function playoffsTab(L) {
   const P = L.playoffs; if (!P) return `<div class="card muted">Playoffs begin after the regular season. Top 8 per conference qualify; round 1 is best-of-5, then best-of-7.</div>`;
-  return [1, 2, 3, 4].filter(r => P.series.some(s => s.round === r)).map(r => `<div class="sect">${['First Round', 'Conference Semifinals', 'Conference Finals', 'Finals'][r - 1]}</div>${seriesList(P.series.filter(s => s.round === r))}`).join('') + (P.champ != null ? `<div class="card center">${disc(P.champ, 56)}<div class="big">${esc(T(P.champ).name)}</div><div class="muted">Champions</div></div>` : '');
+  return bracketView(L) + [1, 2, 3, 4].filter(r => P.series.some(s => s.round === r)).map(r => `<div class="sect">${['First Round', 'Conference Semifinals', 'Conference Finals', 'Finals'][r - 1]}</div>${seriesList(P.series.filter(s => s.round === r))}`).join('') + (P.champ != null ? `<div class="card center">${disc(P.champ, 56)}<div class="big">${esc(T(P.champ).name)}</div><div class="muted">Champions</div></div>` : '');
 }
 function awardsTab(L) {
   const pow = (L.pow || []).filter(x => x.season === L.season).slice(0, 30);
@@ -1173,7 +1188,7 @@ const A = {
     const r = E.advance(L); overlay(null);
     if (!r.ok) { toast(r.error, 3500); return; }
     if (L.phase === 'LOTTERY') S.lotteryReveal = 0;
-    if (L.phase === 'DRAFT') { E.draftUntilUser(L); autosave(); return root('draft'); }
+    if (L.phase === 'DRAFT') { autosave(); return root('draft'); } // never auto-run picks: the draft opens paused at #1 with a mode prompt
     if (['FA2', 'FA3', 'SUMMER'].includes(L.phase)) toast('Free agency week complete — check Messages.');
     autosave(); root('home');
   },
@@ -1204,6 +1219,9 @@ const A = {
   draftNext() { const L = S.L, D = L.draft; const slot = D.order[D.idx]; if (!slot || E.draftControls(L, slot.tid)) return render(); E.draftUntilUser(L, { one: true }); autosave(); render(); },
   draftToMe() { const L = S.L, D = L.draft; const sl = D.order[D.idx]; if (sl && E.draftControls(L, sl.tid)) E.draftAutoOne(L);
     if (L.settings.draftAll || (L.draftTeams || []).length) { while (D.idx < D.order.length && D.order[D.idx].tid !== L.userTid) if (!E.draftAutoOne(L)) break; } else E.draftUntilUser(L); autosave(); render(); },
+  brSel(d) { S.brSel = S.brSel === d.id ? null : d.id; const y = window.scrollY; render(); window.scrollTo(0, y); },
+  simOneDay() { const L = S.L; if (L.phase === 'REGULAR' && E.seasonDone(L)) return toast('Regular season is over'); E.simDay(L); autosave(); render(); },
+  draftMode(d) { const L = S.L; L.draft.modeChosen = true; L.settings.draftAll = d.v === 'all'; if (d.v === 'mine') E.draftUntilUser(L); autosave(); render(); },
   draftAllTog() { const L = S.L; L.settings.draftAll = !L.settings.draftAll; autosave(); render(); toast(L.settings.draftAll ? 'You now make every pick' : 'CPU teams pick for themselves'); },
   draftAutoOne() { const p = E.draftAutoOne(S.L); if (p) toast(`Auto-pick: ${p.name}`); autosave(); render(); },
   dtTog(d) { const L = S.L; const cur = new Set(L.draftTeams || []); const t = +d.tid; cur.has(t) ? cur.delete(t) : cur.add(t); E.setDraftTeams(L, [...cur]); autosave(); render(); },
@@ -1257,13 +1275,17 @@ const A = {
   tradeFor(d) { const p = E.getP(S.L, +d.pid); S.trade = { tid: p.tid, a: [], ap: [], b: [p.pid], bp: [] }; S.tab.trade = 'machine'; root('trade'); },
   tAddSuggest(d) { const tr = S.trade; if (d.kind === 'p') tr.a.push(+d.id); else tr.ap.push(d.id); render(); },
   tclear() { S.trade = { tid: S.trade.tid, a: [], ap: [], b: [], bp: [] }; render(); },
-  ctTog(d) { const ct = S.ct; const key = d.s + (d.k ? 'k' : 'p'); const v = d.k ? d.k : +d.pid; const arr = ct[key]; const i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); else arr.push(v); const y = window.scrollY; render(); window.scrollTo(0, y); },
-  ctForce() { const L = S.L, ct = S.ct; if (ct.a === ct.b) return toast('Pick two different teams');
-    const o = { tidA: ct.a, tidB: ct.b, aPids: ct.ap.slice(), aPicks: ct.ak.slice(), bPids: ct.bp.slice(), bPicks: ct.bk.slice() };
-    const warn = []; for (const [tid, out, inn] of [[ct.a, o.aPids, o.bPids], [ct.b, o.bPids, o.aPids]]) { const n = E.teamPlayers(L, tid).length - out.length + inn.length; if (n > E.ROSTER_MAX) warn.push(`${T(tid).abbr} would have ${n} players (max ${E.ROSTER_MAX})`); if (n < E.ROSTER_MIN) warn.push(`${T(tid).abbr} would have ${n} players (min ${E.ROSTER_MIN})`); }
-    const v = E.validateTrade(L, o); if (!v.ok) warn.push(v.error);
+  ctTog(d) { const ct = S.ct; const from = +d.from; if (ct.mv[d.key] != null) delete ct.mv[d.key]; else { const i = ct.teams.indexOf(from); ct.mv[d.key] = ct.teams[(i + 1) % ct.teams.length]; } const y = window.scrollY; render(); window.scrollTo(0, y); },
+  ctAdd() { const ct = S.ct; const t = teamsAZ(S.L).find(x => !ct.teams.includes(x.tid)); if (t && ct.teams.length < 4) ct.teams.push(t.tid); render(); },
+  ctDel(d) { const ct = S.ct; const tid = ct.teams[+d.i]; ct.teams.splice(+d.i, 1); for (const k of Object.keys(ct.mv)) { const from = k[0] === 'p' ? E.getP(S.L, +k.slice(2))?.tid : S.L.picks.find(x => x.id === k.slice(2))?.tid; if (from === tid || ct.mv[k] === tid) delete ct.mv[k]; } render(); },
+  ctForce() { const L = S.L, ct = S.ct; const moves = Object.entries(ct.mv).map(([k, to]) => k[0] === 'p' ? { pid: +k.slice(2), to } : { pick: k.slice(2), to });
+    const warn = []; for (const t of ct.teams) { const out = moves.filter(m => m.pid != null && E.getP(L, m.pid).tid === t).length, inn = moves.filter(m => m.pid != null && m.to === t).length; const n = E.teamPlayers(L, t).length - out + inn;
+      if (n > E.ROSTER_MAX) warn.push(`${T(t).abbr} would have ${n} players (max ${E.ROSTER_MAX})`); if (n < E.ROSTER_MIN) warn.push(`${T(t).abbr} would have ${n} players (min ${E.ROSTER_MIN})`);
+      const pay = E.payroll(L, t) - moves.filter(m => m.pid != null && E.getP(L, m.pid).tid === t).reduce((a, m) => a + (E.getP(L, m.pid).contract?.amt || 0), 0) + moves.filter(m => m.pid != null && m.to === t).reduce((a, m) => a + (E.getP(L, m.pid).contract?.amt || 0), 0);
+      if (pay > E.cap(L) && pay > E.payroll(L, t)) warn.push(`${T(t).abbr} payroll ${M(pay)} over the cap`); }
     if (!confirm(`Force this trade?${warn.length ? '\n\nWarnings:\n• ' + warn.join('\n• ') : ''}`)) return;
-    const text = E.executeTrade(L, o); S.ct = { ...ct, ap: [], bp: [], ak: [], bk: [] }; toast('Trade done'); (L.inbox ||= []).unshift({ id: L.msgId++, season: L.season, day: L.day, from: 'Commissioner', subject: 'Trade completed', body: text, read: false }); autosave(); render(); },
+    const r = E.executeMultiTrade(L, ct.teams.slice(), moves); if (!r.ok) return toast(r.error); ct.mv = {}; toast('Trade done');
+    (L.inbox ||= []).unshift({ id: L.msgId++, season: L.season, day: L.day, from: 'Commissioner', subject: 'Trade completed', body: r.text, read: false }); autosave(); render(); },
   propose() { const L = S.L, tr = S.trade; const o = { tidA: L.userTid, tidB: tr.tid, aPids: tr.a, aPicks: tr.ap, bPids: tr.b, bPicks: tr.bp }; const ev = E.evaluateTrade(L, o); if (!ev.ok) return toast(ev.error); const t = E.executeTrade(L, o); L.inbox.unshift({ id: L.msgId++, season: L.season, day: L.day, from: 'Front Office', subject: 'Trade completed', body: t, read: false }); toast('Trade accepted!'); S.trade = null; autosave(); render(); },
   staffRole(d) { S.staffRole = d.r; render(); },
   hire(d) { const r = E.hireStaff(S.L, +d.sid); if (!r.ok) return toast(r.error); toast('Hired!'); autosave(); render(); },
@@ -1290,7 +1312,8 @@ document.addEventListener('pointerdown', (e) => { const el = e.target.closest('[
 ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => document.addEventListener(ev, () => clearInterval(holdT)));
 document.addEventListener('change', (e) => {
   const el = e.target;
-  if (el.dataset.ct) { S.ct[el.dataset.ct] = +el.value; S.ct[el.dataset.ct + 'p'] = []; S.ct[el.dataset.ct + 'k'] = []; render(); return; }
+  if (el.dataset.ctt != null) { const ct = S.ct, i = +el.dataset.ctt, old = ct.teams[i]; ct.teams[i] = +el.value; for (const k of Object.keys(ct.mv)) if (ct.mv[k] === old || (k[0] === 'p' ? E.getP(S.L, +k.slice(2))?.tid : S.L.picks.find(x => x.id === k.slice(2))?.tid) === old) delete ct.mv[k]; render(); return; }
+  if (el.dataset.ctd) { S.ct.mv[el.dataset.ctd] = +el.value; render(); return; }
   if (el.dataset.ng) { const k = el.dataset.ng; let v = el.value; if (v === 'true') v = true; else if (v === 'false') v = false; else if (!isNaN(+v) && k !== 'gmName') v = +v; S.ng[k] = v; if (['archetype', 'rosters', 'start', 'startYear'].includes(k)) render(); return; }
   if (el.dataset.set) { const k = el.dataset.set; let v = el.value; if (v === 'true') v = true; else if (v === 'false') v = false; else if (!isNaN(+v)) v = +v; S.L.settings[k] = v; E.ensureSettings(S.L); autosave(); render(); toast('Setting saved'); return; }
   if (el.dataset.ngf) { const k = el.dataset.ngf; let v = el.value; if (v === 'true') v = true; else if (v === 'false') v = false; else if (!isNaN(+v)) v = +v; if (k === 'draftClasses') S.ng.draftClasses = v; else (S.ng.franchise ||= {})[k] = v; render(); return; }

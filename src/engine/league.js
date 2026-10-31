@@ -402,6 +402,8 @@ function accumulate(L, box, key, gameMeta) {
     const line = box[tid][pid]; const p = getP(L, +pid); if (!p) continue;
     if (p.stats.season !== L.season) resetSeasonStats(p, L.season);
     const S = p.stats[key]; if (line.min > 0) S.gp++;
+    if (gameMeta && line.min > 0) { const home = +tid === gameMeta.h; const won = home ? gameMeta.hs > gameMeta.as : gameMeta.as > gameMeta.hs; // compact season game log: [gid, opp, home, win, min, pts, reb, ast, fgm, fga, +/-, playoff]
+      (p.stats.glog ||= []).push([gameMeta.gid, home ? gameMeta.a : gameMeta.h, home ? 1 : 0, won ? 1 : 0, Math.round(line.min), line.pts, line.orb + line.drb, line.ast, line.fgm, line.fga, line.pm, gameMeta.po ? 1 : 0]); }
     for (const k in line) if (k !== 'gs') S[k] += line[k]; else S.gs += line.gs;
     p.stats.tid = p.tid;
     for (const st of ['pts', 'reb', 'ast']) {
@@ -424,7 +426,7 @@ export function playGame(L, g, opts = {}) {
   const ue = simEdge(L), edge = ue ? [g.h === L.userTid ? ue : 0, g.a === L.userTid ? ue : 0] : null; // sim difficulty: user team edge
   const res = simGame(H, A, { pbp: !!opts.pbp, edge, homeAdv: opts.playoff ? 0.018 : undefined, injuryMult: inj * (staffEffects(L, g.h).injury + staffEffects(L, g.a).injury) / 2 });
   g.played = true; g.hs = res.hs; g.as = res.as; g.ot = res.ot; L._played = (L._played || 0) + 1;
-  accumulate(L, res.box, opts.playoff ? 'po' : 'reg');
+  accumulate(L, res.box, opts.playoff ? 'po' : 'reg', { gid: g.gid ?? `${g.id}`, h: g.h, a: g.a, hs: res.hs, as: res.as, po: !!opts.playoff });
   if (g.h === L.userTid || g.a === L.userTid || opts.keepBox) L.games[g.gid ?? `${g.id}`] = { box: res.box, qh: res.qh, qa: res.qa, pbp: res.pbp ? res.pbp.map(({ snap, ...e }) => e) : null, h: g.h, a: g.a, hs: res.hs, as: res.as, ot: res.ot, day: L.day, season: L.season };
   for (const i of res.injuries) {
     const p = getP(L, i.pid);

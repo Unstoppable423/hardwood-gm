@@ -54,6 +54,20 @@ export function evaluateTrade(L, o) {
   const need = getV * (1 + margin) + 3;
   return { ok: giveV >= need, giveV, getV, need: Math.round(need), error: giveV >= need ? null : `${L.teams[o.tidB].abbr} wants more value (${giveV} vs ${Math.round(need)} needed).` };
 }
+// Commissioner multi-team trade (2-4 teams): moves = [{ pid | pick, to }]; all-or-nothing
+export function executeMultiTrade(L, tids, moves) {
+  if (new Set(tids).size !== tids.length || tids.length < 2 || tids.length > 4) return { ok: false, error: 'Pick 2-4 different teams' };
+  for (const m of moves) { const from = m.pid != null ? getP(L, m.pid)?.tid : L.picks.find(k => k.id === m.pick)?.tid;
+    if (from == null || !tids.includes(from) || !tids.includes(m.to) || from === m.to) return { ok: false, error: 'An asset is no longer with its team' }; m.from = from; }
+  if (!moves.length) return { ok: false, error: 'Nothing selected' };
+  for (const m of moves) { if (m.pid != null) getP(L, m.pid).tid = m.to; else L.picks.find(k => k.id === m.pick).tid = m.to; }
+  if (L.draftOrder) for (const d of L.draftOrder) { const pk = L.picks.find(p => p.id === d.id); if (pk) d.tid = pk.tid; }
+  for (const tid of tids) { const t = L.teams[tid]; if (t.rotation) t.rotation = null; }
+  const nm = (m) => m.pid != null ? getP(L, m.pid).name : m.pick.replace(/-(\d)-/, ' R$1 ');
+  const text = `${tids.length}-team trade: ` + tids.map(t => `${L.teams[t].abbr} get ${moves.filter(m => m.to === t).map(nm).join(', ') || 'nothing'}`).join('; ') + '.';
+  news(L, `🔁 ${text}`, 'trade', tids[0]); logTx(L, { type: 'trade', text }, moves.filter(m => m.pid != null).map(m => m.pid));
+  return { ok: true, text };
+}
 export function executeTrade(L, o) {
   for (const id of o.aPids) { const p = getP(L, id); p.tid = o.tidB; }
   for (const id of o.bPids) { const p = getP(L, id); p.tid = o.tidA; }
