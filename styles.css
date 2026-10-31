@@ -237,3 +237,5 @@ html{scroll-padding-top:56px;scroll-padding-bottom:calc(var(--ctaH,0px) + env(sa
 .tabs button{min-height:40px}#app select,#app input:not([type=range]):not([type=checkbox]):not([type=color]),#app button{min-height:40px}
 
 .drawer,.modal,.overlay{padding-top:env(safe-area-inset-top)}
+
+.plink{color:#12708f;font-weight:700;text-decoration:underline;text-underline-offset:2px;cursor:pointer;touch-action:manipulation}

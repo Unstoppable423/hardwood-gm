@@ -397,7 +397,7 @@ function schemeCard(L, tid) {
   return `<div class="sect">Schemes · ${esc(hc.name)}</div><div class="card scheme">
     <div class="sc"><div class="kv"><span>Offense · <b>${esc(hc.off)}</b></span><b>${f.off}</b></div>${bar(f.off)}<div class="muted">${esc(E.OFF_SCHEMES[hc.off]?.blurb || '')}</div></div>
     <div class="sc"><div class="kv"><span>Defense · <b>${esc(hc.def)}</b></span><b>${f.def}</b></div>${bar(f.def)}<div class="muted">${esc(E.DEF_SCHEMES[hc.def]?.blurb || '')}</div></div></div>
-    <div class="list">${ps.slice(0, 9).map(p => { const pf = E.playerFit(p, hc.off, hc.def); return `<div class="it" data-a="player" data-pid="${p.pid}">${avatar(p, 34)}<div class="grow"><div class="nm">${esc(p.name)}</div><div class="meta">${p.pos} · OVR ${R(p.ovr)}</div></div><div class="fitc"><small>OFF</small>${chip(pf.off)}</div><div class="fitc"><small>DEF</small>${chip(pf.def)}</div></div>`; }).join('')}</div>`;
+    <div class="list">${ps.slice(0, 9).map(p => { const pf = E.playerFit(p, hc.off, hc.def); return `<div class="it" data-a="player" data-pid="${p.pid}">${avatar(p, 34)}<div class="grow"><div class="nm"><span class="plink" data-a="player" data-pid="${p.pid}">${esc(p.name)}</span></div><div class="meta">${p.pos} · OVR ${R(p.ovr)}</div></div><div class="fitc"><small>OFF</small>${chip(pf.off)}</div><div class="fitc"><small>DEF</small>${chip(pf.def)}</div></div>`; }).join('')}</div>`;
 }
 function statsTable(ps, key = 'reg') {
   const rows = ps.filter(p => p.stats[key]?.gp).sort((a, b) => b.stats[key].pts / b.stats[key].gp - a.stats[key].pts / a.stats[key].gp);
@@ -600,7 +600,7 @@ PAGES.box = (pg0) => {
 // ---------- TRADE CENTER ----------
 function tradeOpen(L) { return !(L.phase === 'PLAYOFFS' || (L.phase === 'REGULAR' && L.day > L.tradeDeadline)); }
 function descOffer(L, o) {
-  const side = (pids, picks) => [...pids.map(id => { const x = E.getP(L, id); return `${esc(x.name)} <span class="muted">(${x.pos} ${R(x.ovr)})</span>`; }), ...picks.map(id => { const k = L.picks.find(z => z.id === id); return k ? `${k.season} Rd ${k.round} pick (${T(k.orig).abbr})` : id; })].join('<br>') || '—';
+  const side = (pids, picks) => [...pids.map(id => { const x = E.getP(L, id); return `<span class="plink" data-a="player" data-pid="${x.pid}">${esc(x.name)}</span> <span class="muted">${E.posLabel(x)} ${R(x.ovr)} · ${x.age}y · ${M(x.contract?.amt || 0)}/${yrsLeft(x)}y</span>`; }), ...picks.map(id => { const k = L.picks.find(z => z.id === id); return k ? `${k.season} Rd ${k.round} pick (${T(k.orig).abbr})` : id; })].join('<br>') || '—';
   return { give: side(o.aPids, o.aPicks), get: side(o.bPids, o.bPicks) };
 }
 PAGES.trade = () => {
@@ -632,7 +632,7 @@ function tradeMachine(L) {
   const ev = (tr.a.length + tr.ap.length + tr.b.length + tr.bp.length) ? E.evaluateTrade(L, o) : null;
   const pct = ev && ev.need ? Math.min(100, Math.round(ev.giveV / ev.need * 100)) : 0;
   const chk = (arr, id, side, kind) => `<input type="checkbox" style="width:auto" data-a="tsel" data-side="${side}" data-kind="${kind}" data-id="${id}" ${arr.includes(id) ? 'checked' : ''}>`;
-  const prow = (p, side) => `<label class="it">${chk(side === 'a' ? tr.a : tr.b, p.pid, side, 'p')}${avatar(p, 34)}<div class="grow"><div class="nm">${esc(p.name)}</div><div class="meta">${p.pos} · ${p.age} · ${M(p.contract?.amt || 0)} · ${yrsLeft(p)}y</div></div>${sq(p.ovr)}</label>`;
+  const prow = (p, side) => `<label class="it">${chk(side === 'a' ? tr.a : tr.b, p.pid, side, 'p')}${avatar(p, 34)}<div class="grow"><div class="nm"><span class="plink" data-a="player" data-pid="${p.pid}">${esc(p.name)}</span></div><div class="meta">${p.pos} · ${p.age} · ${M(p.contract?.amt || 0)} · ${yrsLeft(p)}y</div></div>${sq(p.ovr)}</label>`;
   const krow = (k, side) => `<label class="it">${chk(side === 'a' ? tr.ap : tr.bp, k.id, side, 'k')}<div class="grow"><div class="nm">${k.season} Round ${k.round}</div><div class="meta">${T(k.orig).abbr} pick</div></div></label>`;
   return `<div class="card"><div class="muted">Trade partner</div><select data-a="tteam">${L.teams.filter(t => t.tid !== L.userTid).map(t => `<option value="${t.tid}" ${t.tid === tr.tid ? 'selected' : ''}>${esc(t.city)} ${esc(t.name)}</option>`).join('')}</select>
   ${ev ? (() => { const fb = E.tradeFeedback(L, o); return `<div style="margin-top:10px"><div class="agent ${fb.ok ? 'ok' : ''}"><div class="who">${esc(fb.from || T(tr.tid).city + ' GM')}${fb.mode ? ` · ${{ contend: 'Contending', rebuild: 'Rebuilding', middle: 'Middle of the pack' }[fb.mode]}` : ''}</div>${fb.lines.map(l => `<div>${esc(l)}</div>`).join('')}${fb.suggest ? `<button class="sm go" data-a="tAddSuggest" data-kind="${fb.suggest.kind}" data-id="${fb.suggest.id}">Add ${esc(fb.suggest.name)}</button>` : ''}</div>
@@ -718,6 +718,8 @@ PAGES.draft = () => {
     const best = all[0];
     if (onClock && slot.tid === L.userTid) { const offs = E.clockOffers(L); S.clockOffs = offs;
       if (offs.length) body += `<div class="sect">Offers for your pick</div>${offs.map((o, i) => `<div class="card"><div class="row">${disc(o.tidB, 34)}<div class="grow" style="font-size:13px">${esc(T(o.tidB).name)} offer ${o.bPicks.map(id => { const k = L.picks.find(z => z.id === id); return `${k.season} Rd ${k.round} (${T(k.orig).abbr})`; }).join(' + ')}</div><button class="sm go" data-a="clockAccept" data-i="${i}">Accept</button></div></div>`).join('')}`; }
+    body = `<div class="row" style="padding:6px 10px"><div class="grow small muted">${L.settings.draftAll ? 'You choose every pick, for every team.' : 'You choose your own picks only.'}</div><button class="sm ${L.settings.draftAll ? 'go' : 'ghost'}" data-a="draftAllTog">Control all picks: ${L.settings.draftAll ? 'ON' : 'OFF'}</button></div>` + body;
+    if (slot && onClock && slot.tid !== L.userTid) body = `<div class="card" style="padding:8px 12px"><b>On the clock: ${esc(T(slot.tid).city + ' ' + T(slot.tid).name)}</b> · pick #${slot.pick}. Tap a prospect to choose for them.</div>` + body;
     if (best) body += `<div class="sect">Best player available</div><div class="list">${prospectRow(best, 1, onClock)}</div>`;
     body += `<div class="row" style="padding:4px 10px">${pillSeg('draftPos', ['All', ...E.POS].map(x => [x, x])).replace('class="pill-seg"', 'class="pill-seg" style="flex:1;margin:0"')}<button class="sm ${S.shortOnly ? 'blue' : 'ghost'}" data-a="shortOnly" aria-label="Shortlist only">${starSvg('full', 16)}</button></div>
     <div class="list">${ps.slice(0, 70).map(p => prospectRow(p, all.indexOf(p) + 1, onClock)).join('') || '<div class="it muted">Nobody here.</div>'}</div>`;
@@ -1084,11 +1086,12 @@ const A = {
   importPick() { $('#importFile').click(); },
   drawer() { S.drawer = true; renderDrawer(); }, drawerClose() { S.drawer = false; renderDrawer(); },
   nav(d) { if (d.t) S.tab[d.p] = d.t; if (d.p === 'team') S.tab.team = d.t || 'roster'; S.drawer = false; S.modal = null; renderModal(); if (['reorder', 'player', 'box'].includes(d.p)) go(d.p); else root(d.p); },
-  back() { if (S.page.n === 'live') { clearInterval(liveTimer); S.live = null; } S.page = S.stack.pop() || { n: 'home' }; render(); },
+  back() { if (S.page.n === 'live') { clearInterval(liveTimer); S.live = null; } S.page = S.stack.pop() || { n: 'home' }; render();
+    const mr = S.modalReturn; if (mr && S.stack.length < mr.depth) { S.modalReturn = null; S.modal = mr.modal; renderModal(); } },
   tab(d) { S.tab[d.g] = d.k; render(); },
   setS(d) { S[d.k] = isNaN(+d.v) || d.v === '' ? d.v : +d.v; render(); },
   teamPage(d) { const tid = +d.tid; if (tid === S.L.userTid) { S.tab.team = 'roster'; return root('team'); } S.tab.team = 'roster'; go('team', { tid }); },
-  player(d) { S.tab.player = 'skills'; go('player', { pid: +d.pid }); },
+  player(d) { if (S.modal) { S.modalReturn = { modal: S.modal, depth: S.stack.length + 1 }; S.modal = null; renderModal(); } S.tab.player = 'skills'; go('player', { pid: +d.pid }); },
   goto(d) { go(d.n); },
   edit(d) { S.ed = null; go('editPlayer', { pid: +d.pid }); },
   edPeakClear() { if (!S.ed) return; S.ed.m.peak = ''; render(); },
@@ -1184,7 +1187,9 @@ const A = {
   lotNext() { S.lotteryReveal++; render(); }, lotAll() { S.lotteryReveal = 99; render(); },
   draftPick(d) { const L = S.L; const sl = L.draft.order[L.draft.idx]; if (!sl || !E.draftControls(L, sl.tid)) return toast('Not your pick'); const p = E.getP(L, +d.pid); const r = E.draftPlayer(L, +d.pid); if (!r.ok) return toast(r.error); toast(sl.tid === L.userTid ? `You drafted ${p.name}!` : `${T(sl.tid).abbr} draft ${p.name}`); autosave(); if (S.page.n !== 'draft') root('draft'); else render(); },
   draftNext() { const L = S.L, D = L.draft; const slot = D.order[D.idx]; if (!slot || E.draftControls(L, slot.tid)) return render(); E.draftUntilUser(L, { one: true }); autosave(); render(); },
-  draftToMe() { const L = S.L, D = L.draft; const sl = D.order[D.idx]; if (sl && E.draftControls(L, sl.tid)) E.draftAutoOne(L); E.draftUntilUser(L); autosave(); render(); },
+  draftToMe() { const L = S.L, D = L.draft; const sl = D.order[D.idx]; if (sl && E.draftControls(L, sl.tid)) E.draftAutoOne(L);
+    if (L.settings.draftAll || (L.draftTeams || []).length) { while (D.idx < D.order.length && D.order[D.idx].tid !== L.userTid) if (!E.draftAutoOne(L)) break; } else E.draftUntilUser(L); autosave(); render(); },
+  draftAllTog() { const L = S.L; L.settings.draftAll = !L.settings.draftAll; autosave(); render(); toast(L.settings.draftAll ? 'You now make every pick' : 'CPU teams pick for themselves'); },
   draftAutoOne() { const p = E.draftAutoOne(S.L); if (p) toast(`Auto-pick: ${p.name}`); autosave(); render(); },
   dtTog(d) { const L = S.L; const cur = new Set(L.draftTeams || []); const t = +d.tid; cur.has(t) ? cur.delete(t) : cur.add(t); E.setDraftTeams(L, [...cur]); autosave(); render(); },
   dtAll(d) { const L = S.L; E.setDraftTeams(L, d.on === '1' ? L.teams.filter(t => !t.inactive).map(t => t.tid) : []); autosave(); render(); },
