@@ -938,7 +938,7 @@ PAGES.editPlayer = (pg0) => {
    ${(() => { const ti = Math.round((+m.h || 0) / 2.54); const ft = Math.floor(ti / 12), inch = ti % 12; const o = (a, b, cur) => Array.from({ length: b - a + 1 }, (_, i) => a + i).map(v => `<option value="${v}" ${v === cur ? 'selected' : ''}>${v}</option>`).join('');
      return field(`Height (${ft}' ${inch}")`, `<div class="row" style="gap:4px"><select data-edh="ft" aria-label="Height feet">${o(5, 7, ft)}</select><span>ft</span><select data-edh="in" aria-label="Height inches">${o(0, 11, inch)}</select><span>in</span></div>`); })()}
    ${field('Weight (lb)', `<input type="number" inputmode="numeric" data-edh="lb" value="${Math.round((+m.w || 0) * 2.20462)}" min="135" max="370" aria-label="Weight in pounds">`)}</div></div>
-  <div class="sect">Ratings</div><div class="card">${E.EDIT_ATTRS.map(k => slider('attrs.' + k, E.EDIT_LABEL[k])).join('')}${slider('pot', 'Potential')}</div>
+  <div class="sect">Ratings</div><div class="card"><div class="edr"><span><b>All ratings</b></span><div class="stepper" style="margin:0"><button data-a="edAll" data-d="-1" data-hold="1" aria-label="Lower all ratings">−</button><b id="edAllAvg" style="min-width:44px;text-align:center">${Math.round(E.EDIT_ATTRS.reduce((t, k) => t + (+edGet('attrs.' + k) || 0), 0) / E.EDIT_ATTRS.length)}</b><button data-a="edAll" data-d="1" data-hold="1" aria-label="Raise all ratings">+</button></div></div>${E.EDIT_ATTRS.map(k => slider('attrs.' + k, E.EDIT_LABEL[k])).join('')}${slider('pot', 'Potential')}</div>
   <div class="sect">Development</div><div class="card"><div class="grid2">${field('Dev trait', sel('devTrait', [...new Set([m.devTrait, ...E.DEV_TRAITS])].map(x => [x, x]), 'Dev trait'))}
    ${field('Work ethic', sel('work', [['Low', 'Low'], ['Medium', 'Medium'], ['High', 'High']], 'Work ethic'))}${field('Career length', sel('lon', E.CAREER_LEN, 'Career length'))}
    ${field(`Morale (${E.moraleWord(+m.mood)})`, num('mood', 0, 100))}</div><div class="muted small">Durability is the rating above; dev trait sets potential headroom.</div></div>
@@ -1201,6 +1201,11 @@ const A = {
   returnFAs() { const L = S.L; if (!confirm('Re-sign every free agent who played for a team last season back to that team at a fair contract?')) return;
     const mine = E.freeAgents(L).filter(p => p.formerTid === L.userTid).length; const inc = mine > 0 && confirm(`Also bring back ${mine} of your own former players to your team?`);
     const r = E.returnFreeAgents(L, { includeUser: inc }); E.aiRosterFix(L); toast(`${r.length} free agents returned to their teams`); autosave(); render(); },
+  edAll(d) { if (!S.ed) return; const step = +d.d; let tot = 0;
+    for (const k of E.EDIT_ATTRS) { const path = 'attrs.' + k; const v = Math.max(40, Math.min(99, (+edGet(path) || 0) + step)); edSet(path, v); tot += v;
+      const inp = document.querySelector(`[data-ed="${path}"]`); if (inp) inp.value = v; const b = document.getElementById('v-' + path.replace('.', '-')); if (b) { b.textContent = v; b.className = qc(E.internalFor(v)); } }
+    const avg = document.getElementById('edAllAvg'); if (avg) avg.textContent = Math.round(tot / E.EDIT_ATTRS.length);
+    const o = document.getElementById('edOvr'); const p = E.getP(S.L, S.ed.pid); if (o && p) { const ov = E.previewOvr(p, S.ed.m); o.textContent = ov; o.className = 'n ' + qc(E.internalFor(ov)); } },
   offMin() { S.modal.amt = E.minSalary(S.L.season); renderModal(); },
   offAsk() { const L = S.L, p = E.getP(L, S.modal.pid); S.modal.amt = curAsk(L, p, S.modal.kind); renderModal(); },
   offYrs(d) { const L = S.L, p = E.getP(L, S.modal.pid), k = S.modal.kind; const maxY = k === 'ext' ? E.maxYears(L, true) - 1 : L.phase === 'REGULAR' && k === 'fa' ? 1 : E.maxYears(L, k === 'resign');

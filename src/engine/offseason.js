@@ -678,6 +678,18 @@ export function anchorTargets(L, top150 = null) {
   const x = L.players.filter(p => p.tid >= 0).map(p => p.ovr).sort((a, b) => b - a); const m = (a) => Math.round(a.reduce((s, v) => s + v, 0) / a.length * 10) / 10;
   return { top150: top150 ?? m(x.slice(0, 150)), top10: m(x.slice(0, 10)) - 1 };
 }
+// smooth aging: one offseason (development + real-career pull + league anchor) can't move a player more than his age allows
+export const PROG_CAP = { on: true };
+export function ageBand(a) { return a <= 23 ? [-2, 99] : a <= 29 ? [-2, 3] : a <= 32 ? [-3, 2] : [-6, 1]; }
+function capYearChange(p) {
+  const [lo, hi] = ageBand(p.age);
+  for (let i = 0; i < 4; i++) {
+    const d = dispRating(p.ovr) - dispRating(p.prevOvr); const fix = d < lo ? lo - d : d > hi ? hi - d : 0; if (!fix) return;
+    for (const k of Object.keys(p.ratings)) if (k !== 'sta' && k !== 'dur' && typeof p.ratings[k] === 'number' && typeof p.prevRatings[k] === 'number')
+      p.ratings[k] = clamp(p.ratings[k] + Math.sign(fix) * Math.max(1, Math.round(Math.abs(fix) * 0.9)), 1, 99);
+    p.ovr = ovrFromAttrs(p.ratings, p.pos); p.pot = Math.max(p.pot, p.ovr);
+  }
+}
 function enterSummer(L) {
   L.phase = 'SUMMER'; L.progressReport = [];
   if (L.ratingAnchor == null || typeof L.ratingAnchor === 'number') L.ratingAnchor = anchorTargets(L, L.ratingAnchor); // old saves
@@ -716,6 +728,7 @@ function enterSummer(L) {
   if (!L.ratingAnchor.attr?.sco) L.ratingAnchor.attr = { ...attrTops(L.players), ...(L.ratingAnchor.attr || {}) }; anchorAttrTails(L.players, L.ratingAnchor.attr);
   L.anchorShift = anchorRatings(L.players, L.ratingAnchor);
   for (const p of L.players) if (!p.retired && p.tid >= -1 && (p.peakTarget != null || DEFAULT_PEAKS[p.name])) applyPeakNow(L, p, L.season); // peak targets survive the league anchor
+  if (PROG_CAP.on) for (const p of L.players) if (!p.retired && p.tid >= -1 && p.prevOvr != null && p.prevRatings) capYearChange(p);
   for (const p of L.players) {
     if (p.tid !== L.userTid || p.prevOvr == null) continue; const d = p.ovr - p.prevOvr;
     L.progressReport.push({ pid: p.pid, name: p.name, d, ovr: p.ovr, age: p.age });
