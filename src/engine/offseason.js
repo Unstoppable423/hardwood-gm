@@ -95,6 +95,7 @@ export function aiRosterFix(L) {
       sign(L, f, t.tid, minSalary(L.season), 1, { ng: true }); ps = teamPlayers(L, t.tid);
     }
   }
+  ensureFAPool(L);
 }
 function setExpectation(L) {
   const ranks = L.teams.map(t => ({ tid: t.tid, o: teamOvr(L, t.tid) })).sort((a, b) => b.o - a.o);
@@ -756,6 +757,12 @@ export function applyStart(L, start) {
   }
   reindex(L);
 }
+// keep a pool of fringe veterans available all year (min-deal depth); old saves are topped up on load
+export function ensureFAPool(L, n = 24) {
+  let have = freeAgents(L).length; let added = 0;
+  while (have < n) { const f = generateVeteran(L.season, randInt(40, 52)); f.tid = -1; resetSeasonStats(f, L.season); L.players.push(f); have++; added++; }
+  if (added) reindex(L); return added;
+}
 export function fairContract(L, p) { return Math.round(clamp(marketValue(p, L.season), minSalary(L.season), maxSalary(L.season, p)) / 10) * 10; }
 // commissioner-style signing: any FA to any team at a fair deal, ignoring interest and the cap
 export function commissionerSign(L, p, tid) { L.fa ||= { offers: {}, round: 0 }; L.fa.offers ||= {}; delete L.fa.offers[p.pid]; sign(L, p, tid, fairContract(L, p), commishYears(L, p, tid)); return p; }
@@ -772,5 +779,6 @@ export function returnFreeAgents(L, { includeUser = false } = {}) {
     commissionerSign(L, p, p.formerTid); out.push(p);
   }
   if (out.length) news(L, `${out.length} free agents returned to their previous teams.`, 'fa');
+  ensureFAPool(L);
   return out;
 }

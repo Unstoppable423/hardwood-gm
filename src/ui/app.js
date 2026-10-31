@@ -6,7 +6,7 @@ import { saveSlot, loadSlot, listSlots, deleteSlot, exportJSON } from './storage
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const S = { L: null, slot: null, view: 'title', page: { n: 'home' }, stack: [], tab: {}, modal: null, drawer: false, ng: null, slots: [], trade: null, live: null,
-  lotteryReveal: 0, draftTab: 'avail', draftPos: 'All', shortOnly: false, faPos: 'All', statPos: 'All', apQ: '', apPos: 'All', hofMine: false };
+  lotteryReveal: 0, draftTab: 'avail', draftPos: 'All', shortOnly: false, faPos: 'All', statPos: 'All', statExp: 0, apQ: '', apPos: 'All', hofMine: false };
 let DATA = null;
 window.__S = S; window.__E = E; window.__avatar = (...a) => avatar(...a); window.__go = (...a) => go(...a);
 
@@ -104,6 +104,7 @@ function attach(L) {
   E.ensureSettings(L);
   L.gm.reputation ??= 40; L.gm.teams ||= [L.userTid]; L.achievements ||= {}; L.tradeBlock ||= []; L.tradeOffers ||= []; L.shortlist ||= [];
   if (!L.players.some(p => p.tid === -2 && p.draft?.year > L.season)) E.ensureWorld(L);
+  E.ensureFAPool(L); // old saves: never an empty free-agent list
 }
 
 // ---------- render ----------
@@ -756,11 +757,11 @@ function teamStatTab(L) {
 }
 function playerStatTab(L) {
   const minG = Math.max(1, Math.min(20, L.schedule.filter(g => g.played).length / 29 * 0.5));
-  let ps = L.players.filter(p => p.tid >= 0 && p.stats.reg.gp >= minG); if (S.statPos !== 'All') ps = ps.filter(p => p.pos === S.statPos);
+  let ps = L.players.filter(p => p.tid >= 0 && p.stats.reg.gp >= minG); if (S.statPos !== 'All') ps = ps.filter(p => p.pos === S.statPos); if (+S.statExp) ps = ps.filter(p => expYr(L, p) === +S.statExp);
   const k = S.pstatSort || 'pts'; const val = (p) => { const s = p.stats.reg; return k === 'fnt' ? E.fantasy(s) / s.gp : k === 'reb' ? rebOf(s) / s.gp : k === 'fg' ? (s.fga / s.gp >= 5 ? s.fgm / s.fga * 100 : 0) : s[k] / s.gp; };
   ps = ps.map(p => ({ p, v: val(p) })).sort((a, b) => b.v - a.v).slice(0, 50);
   const th = (key, l) => `<button class="${k === key ? 'on' : ''}" data-a="setS" data-k="pstatSort" data-v="${key}">${l}</button>`;
-  return `${pillSeg('statPos', ['All', ...E.POS].map(x => [x, x]))}<div class="pill-seg">${th('pts', 'PTS')}${th('reb', 'REB')}${th('ast', 'AST')}${th('stl', 'STL')}${th('blk', 'BLK')}${th('fg', 'FG%')}${th('fnt', 'FntPt')}</div>
+  return `${pillSeg('statPos', ['All', ...E.POS].map(x => [x, x]))}${pillSeg('statExp', [[0, 'All'], [1, 'Rookie'], [2, '2nd'], [3, '3rd'], [4, '4th'], [5, '5th']])}<div class="pill-seg">${th('pts', 'PTS')}${th('reb', 'REB')}${th('ast', 'AST')}${th('stl', 'STL')}${th('blk', 'BLK')}${th('fg', 'FG%')}${th('fnt', 'FntPt')}</div>
   <div class="list">${ps.map((x, i) => `<div class="it" data-a="player" data-pid="${x.p.pid}"><b style="width:22px" class="muted">${i + 1}</b>${avatar(x.p, 34)}<div class="grow"><div class="nm">${esc(x.p.name)}</div><div class="meta">${x.p.pos} · ${T(x.p.tid).abbr} · ${x.p.stats.reg.gp} GP</div></div><b>${x.v.toFixed(1)}</b></div>`).join('') || '<div class="it muted">No games played yet.</div>'}</div>`;
 }
 function recordsTab(L) {
@@ -976,6 +977,8 @@ PAGES.fapool = () => {
   <div class="sect">Pool</div><div class="list">${ps.slice(0, 120).map(terms).join('')}</div>` };
 };
 
+// NBA season number (1 = rookie): from draft year, else seasons in the career log
+const expYr = (L, p) => p.draft?.year ? L.season - p.draft.year : (p.prior?.yrs || 0) + (p.career?.length || 0) + 1;
 // ---------- MODALS ----------
 function sheetHead(title, sub = '') { return `<div class="sh"><div><div style="font-weight:800">${title}</div>${sub ? `<div style="font-size:12px;opacity:.85">${sub}</div>` : ''}</div><button class="x sm" data-a="close" aria-label="Close">${icon('close', { s: 18 })}</button></div>`; }
 function modalView() { return ({ signTo: signToModal, offer: offerModal, holiday: holidayModal, cut: cutModal }[S.modal.type] || (() => ''))(); }
