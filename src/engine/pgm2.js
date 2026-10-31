@@ -1,7 +1,7 @@
 // PGM2-parity systems: World (college pool), Player of the Week, GM reputation + job market,
 // achievements, trade block / trade center offers, draft-day offers, extensions, position changes, roles.
 import { rand, shuffle, clamp } from './rng.js';
-import { ATTRS, ovrFromAttrs, marketValue, dispRating } from './players.js';
+import { ATTRS, ovrFromAttrs, marketValue, dispRating, eligiblePos } from './players.js';
 import { HOOKS, teamPlayers, getP, msg, msgBatch, news, logTx, standings, teamOvr, createDraftClass, payroll, cap, staffEffects } from './league.js';
 import { gpReq } from './era.js';
 import { ROSTER_MAX } from './constants.js';
@@ -41,8 +41,8 @@ export function roleRatings(p, ratings = p.ratings) {
 export const bestRole = (p) => roleRatings(p).sort((a, b) => b[1] - a[1])[0][0];
 
 // ---------- Position change with adaptability ----------
-export function posPenalty(p) { return p.natPos && p.natPos !== p.pos ? Math.round((100 - (p.adapt ?? 50)) / 12) : 0; }
-export function applyPos(p) { p.ovr = Math.max(25, Math.round(ovrFromAttrs(p.ratings, p.pos)) - posPenalty(p)); }
+export function posPenalty(p) { return p.natPos && p.natPos !== p.pos && !eligiblePos(p).includes(p.pos) ? Math.round((100 - (p.adapt ?? 50)) / 12) : 0; }
+export function applyPos(p) { const nat = p.natPos || p.pos; const base = eligiblePos(p).includes(p.pos) ? Math.max(ovrFromAttrs(p.ratings, p.pos), ovrFromAttrs(p.ratings, nat)) : ovrFromAttrs(p.ratings, p.pos); p.ovr = Math.max(25, Math.round(base) - posPenalty(p)); }
 export function changePosition(L, pid, pos) {
   const p = getP(L, pid); if (!p || p.tid !== L.userTid) return { ok: false, error: 'Not your player' };
   if (!p.natPos) p.natPos = p.pos;

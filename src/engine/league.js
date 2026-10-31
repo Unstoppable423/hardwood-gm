@@ -10,7 +10,7 @@ import { ensureSettings, applyRules, deadlineDay, simEdge, seriesLen } from './f
 import { TEAMS, capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, DIFFICULTY, PHASE_LABEL } from './constants.js';
 import { careerMode, arcPot, applyPeakNow } from './careers.js';
 import { START_FUTURE, histPotFromPeak, attrTops, playerFromStats, finalizeStartRatings, prospectFromReal, generateProspect, generateVeteran, devTrait, marketValue,
-  setNextPid, getNextPid, POS_OVERRIDE, genName, ovrFromAttrs } from './players.js';
+  setNextPid, getNextPid, POS_OVERRIDE, POS_ELIG, eligiblePos, genName, ovrFromAttrs } from './players.js';
 import { simGame, autoRotation } from './sim.js';
 import { startPreseason } from './offseason.js';
 
@@ -31,7 +31,13 @@ export function repairSave(L) {
     const keep = ps.slice().sort((a, b) => rank(a) - rank(b))[0];
     for (const p of ps) if (p !== keep) { p.pid = getNextPid(); setNextPid(p.pid + 1); fixed++; }
   }
-  if (!L.posFix1) { L.posFix1 = true; for (const p of L.players) if (POS_OVERRIDE[p.name] && p.real !== false) p.pos = POS_OVERRIDE[p.name]; } // once, so later manual changes stick
+  if (!L.posFix2) { L.posFix2 = true; for (const p of L.players) { const o = POS_OVERRIDE[p.name]; if (!o || p.real === false) continue; p.natPos = o; if (p.pos !== o) { p.pos = o; p.ovr = Math.max(25, Math.round(ovrFromAttrs(p.ratings, p.pos))); } } } // once (natural position too), so later manual changes stick
+  if (!L.posFix3) { L.posFix3 = true; for (const p of L.players) { const e = POS_ELIG[p.name]; if (e && p.real !== false) { p.pos2 = e.slice(1); if (p.natPos && p.natPos !== e[0] && p.pos === p.natPos) { p.natPos = e[0]; p.pos = e[0]; } } else if (!p.pos2) eligiblePos(p); } }
+  // roster players without a contract (e.g. traded before signing): give a fair deal
+  for (const p of L.players) if (p.tid >= 0 && !p.retired && !p.contract) p.contract = { amt: Math.round(Math.max(minSalary(L.season), marketValue(p, L.season)) / 10) * 10, exp: L.season + 2, signed: L.season, rookie: !!p.draft?.year && p.draft.year >= L.season - 1 };
+  // lineups store player ids: drop any lineup that names someone not on that team (stale/colliding ids) so it is rebuilt
+  for (const t of L.teams) { const r = t.rotation; if (!r) continue; const ids = new Set(L.players.filter(p => p.tid === t.tid).map(p => p.pid));
+    if (!r.starters?.every(id => ids.has(id)) || new Set(r.starters).size !== r.starters.length || Object.keys(r.minutes || {}).some(id => !ids.has(+id))) t.rotation = null; }
   reindex(L); return fixed;
 }
 // Jersey numbers: real 1996-97 numbers from the data; anyone joining a team (draft, FA, trade) keeps his old number

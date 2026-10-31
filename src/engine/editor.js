@@ -2,7 +2,7 @@
 // The editor works on the DISPLAY scale (40-99); unchanged values keep their exact internal number.
 import { addProspect } from './draftclass.js';
 import { clamp } from './rng.js';
-import { ATTRS, ovrFromAttrs, dispRating, internalFor, deriveDefSkills, devTrait, generateVeteran, posFrom } from './players.js';
+import { eligiblePos, ATTRS, ovrFromAttrs, dispRating, internalFor, deriveDefSkills, devTrait, generateVeteran, posFrom } from './players.js';
 import { getP, teamPlayers, reindex, logTx, ensureNumbers, news } from './league.js';
 import { minSalary, maxSalary, ROSTER_MAX, POS } from './constants.js';
 import { raiseCap, yearOneFor, maxYears, isOffseasonBeforeNewYear } from './offseason.js';
@@ -19,7 +19,7 @@ const contractYears = (L, c) => !c ? 0 : c.exp - L.season + (isOffseasonBeforeNe
 export function editorModel(L, p) {
   const r = Object.fromEntries(EDIT_ATTRS.map(k => [k, dispRating(p.ratings[k] ?? 50)]));
   const c = p.contract;
-  return { name: p.name, tid: p.tid, pos: p.pos, num: p.num ?? '', age: p.age, h: p.h, w: p.w, attrs: r, pot: dispRating(p.pot),
+  return { name: p.name, tid: p.tid, pos: p.pos, pos2: eligiblePos(p).filter(x => x !== p.pos).slice(0, 2), num: p.num ?? '', age: p.age, h: p.h, w: p.w, attrs: r, pot: dispRating(p.pot),
     devTrait: devTrait(p), work: p.traits?.work || 'Medium', lon: (p.lon ?? 1) <= 0.9 ? 0.8 : (p.lon ?? 1) >= 1.1 ? 1.2 : 1,
     contract: c ? { amt: c.aav ?? c.amt, yrs: Math.max(1, contractYears(L, c)), raise: c.raise || 0 } : null,
     injury: p.injury ? { type: p.injury.type, games: p.injury.games } : null, mood: p.mood ?? 50, peak: p.peakTarget ?? '' };
@@ -69,7 +69,8 @@ export function applyEdit(L, pid, m) {
   const errors = validateEdit(L, p, m); if (errors.length) return { ok: false, errors };
   const before = editorModel(L, p); const changed = [];
   if (m.name.trim() !== p.name) { changed.push('name'); p.name = m.name.trim(); }
-  if (m.pos !== p.pos) { changed.push('position'); p.pos = m.pos; }
+  if (m.pos !== p.pos) { changed.push('position'); p.pos = m.pos; p.natPos = m.pos; }
+  if (Array.isArray(m.pos2)) { const n = m.pos2.filter(x => POS.includes(x) && x !== p.pos).slice(0, 2); if (n.join() !== (p.pos2 || []).join()) { changed.push('secondary positions'); p.pos2 = n; } }
   if (m.age !== p.age) { changed.push('age'); p.born = (p.born || L.season - p.age) - (m.age - p.age); p.age = m.age; }
   if (m.h !== p.h) { p.h = m.h; changed.push('height'); } if (m.w !== p.w) { p.w = m.w; changed.push('weight'); }
   for (const k of EDIT_ATTRS) if (m.attrs[k] !== before.attrs[k]) { p.ratings[k] = internalFor(m.attrs[k]); changed.push(k); p.arcOff = true; }

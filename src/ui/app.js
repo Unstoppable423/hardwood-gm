@@ -345,7 +345,7 @@ function playerRow(p, opts = {}) {
   const yl = yrsLeft(p); const blk = (L.tradeBlock || []).includes(p.pid) ? ' <span class="tag" style="background:var(--gold)">BLOCK</span>' : '';
   const delta = p.prevOvr != null && p.ovr !== p.prevOvr ? `<span class="${p.ovr > p.prevOvr ? 'up' : 'dn'}">${p.ovr > p.prevOvr ? '↑' : '↓'}${Math.max(1, Math.abs(R(p.ovr) - R(p.prevOvr)))}</span>` : '';
   return `<div class="it" data-a="${opts.act || 'player'}" data-pid="${p.pid}">${avatar(p, 42)}
-   <div class="grow"><div class="nm">${esc(p.name)}${blk} ${inj}</div><div class="meta">${opts.meta ?? `${p.pos} · ${yrsPro(p) ? `EXP ${yrsPro(p)} yrs` : 'Rookie'} · ${p.contract ? `${M(p.contract.amt)} · ${yl} yr${yl === 1 ? '' : 's'}` : 'No contract'}`}</div></div>
+   <div class="grow"><div class="nm">${esc(p.name)}${blk} ${inj}</div><div class="meta">${opts.meta ?? `${E.posLabel(p)} · ${yrsPro(p) ? `EXP ${yrsPro(p)} yrs` : 'Rookie'} · ${p.contract ? `${M(p.contract.amt)} · ${yl} yr${yl === 1 ? '' : 's'}` : 'No contract'}`}</div></div>
    ${opts.extra || ''}<div class="rt">${hideR(p) ? sq(null) : sq(p.ovr)}<div class="dw">${delta} ${devWord(p)}</div></div></div>`;
 }
 PAGES.team = (pg0) => {
@@ -459,7 +459,7 @@ PAGES.reorder = () => {
   const ps = rot.order.map(id => E.getP(L, id));
   const tot = ps.reduce((s, p) => s + (p.injury ? 0 : rot.minutes[p.pid] || 0), 0);
   const row = (p, i) => { const st = i < 5; return `<div class="it">${!auto ? `<div style="display:flex;flex-direction:column;gap:2px"><button class="sm ghost" style="padding:0 8px" data-a="mv" data-pid="${p.pid}" data-d="-1">▲</button><button class="sm ghost" style="padding:0 8px" data-a="mv" data-pid="${p.pid}" data-d="1">▼</button></div>` : `<b style="width:22px" class="muted">${i + 1}</b>`}
-    <div class="grow" data-a="player" data-pid="${p.pid}"><div class="nm">${esc(p.name)} ${p.injury ? `<span class="inj">${injIcon()}</span>` : ''}</div><div class="meta"><b>${p.pos}</b>${p.natPos && p.natPos !== p.pos ? ` (natural ${p.natPos})` : ''} · ${E.bestRole(p)}</div></div>
+    <div class="grow" data-a="player" data-pid="${p.pid}"><div class="nm">${esc(p.name)} ${p.injury ? `<span class="inj">${injIcon()}</span>` : ''}</div><div class="meta"><b>${E.posLabel(p)}</b>${p.natPos && p.natPos !== p.pos ? ` (natural ${p.natPos})` : ''} · ${E.bestRole(p)}</div></div>
     ${!auto ? `<button class="sm ghost" data-a="mins" data-pid="${p.pid}" data-d="-2">−</button>` : ''}<b style="width:24px;text-align:center">${rot.minutes[p.pid] || 0}</b>${!auto ? `<button class="sm ghost" data-a="mins" data-pid="${p.pid}" data-d="2">+</button>` : ''}${sq(p.ovr)}</div>`; };
   return { title: 'Reorder', right: `<button class="rb" data-a="autoRot">${auto ? `Auto ${icon('check', { s: 16 })}` : 'Auto'}</button>`,
     body: `<div class="card"><div class="kv"><span>Rotation minutes</span><b class="${Math.abs(tot - 240) <= 5 ? 'tg' : 'tr'}">${tot} / 240</b></div><div class="muted">${auto ? 'Your head coach sets the lineup. Turn Auto off to set your own starters, order and minutes.' : 'Top five start. Use ▲▼ to reorder, −/+ for minutes. Tap a player to change his position.'}</div></div>
@@ -472,7 +472,7 @@ PAGES.player = (pg0) => {
   const own = p.tid === L.userTid; const tb = curTab('player', 'skills'); const pot = potOf(p); const age = E.ageNow(L, p);
   const shortl = (L.shortlist || []).includes(p.pid);
   const top = `<div class="phead">${avatar(p, 64)}<div class="grow"><div style="font-weight:800;font-size:16px">${esc(p.name)}</div>
-   <div class="muted">${p.tid >= 0 && p.num != null ? `#${esc(p.num)} · ` : ''}${p.pos} · Age ${age} · <span class="nw">${ht(p.h)}</span> · <span class="nw">${Math.round(p.w * 2.20462)} lb</span></div><div class="muted">${p.tid >= 0 ? esc(T(p.tid).city + ' ' + T(p.tid).name) : p.tid === -1 ? 'Free agent' : p.tid === -2 ? `${esc(p.college || p.country)} · ${p.draft?.year} draft` : p.tid === -6 ? 'Fantasy draft pool' : p.hiatus ? `Retired (${p.hiatus.from})` : 'Retired'}</div>
+   <div class="muted">${p.tid >= 0 && p.num != null ? `#${esc(p.num)} · ` : ''}${E.posLabel(p)} · Age ${age} · <span class="nw">${ht(p.h)}</span> · <span class="nw">${Math.round(p.w * 2.20462)} lb</span></div><div class="muted">${p.tid >= 0 ? esc(T(p.tid).city + ' ' + T(p.tid).name) : p.tid === -1 ? 'Free agent' : p.tid === -2 ? `${esc(p.college || p.country)} · ${p.draft?.year} draft` : p.tid === -6 ? 'Fantasy draft pool' : p.hiatus ? `Retired (${p.hiatus.from})` : 'Retired'}</div>
    ${p.injury ? `<div class="inj">${injIcon()} ${esc(p.injury.type)} — out ~${Math.ceil(p.injury.games)} game(s)</div>` : ''}</div>
    <div class="rbox"><div class="h">RATING</div><div class="n ${hideR(p) ? '' : qc(p.ovr)}">${hideR(p) ? '?' : R(p.ovr)}</div><div class="w">${devWord(p) || '&nbsp;'}</div></div></div>
    <div class="pcols"><div><span class="muted">POT</span> ${stars(pot)}</div><div><span class="muted">EXP</span> <b>${yrsPro(p)}</b></div><div><span class="muted">Contract</span> <b>${p.contract ? M(p.contract.amt) : '—'}</b></div></div>` +
@@ -934,7 +934,7 @@ PAGES.editPlayer = (pg0) => {
   const rc = E.raiseCap(L.season, true); const c = m.contract;
   const body = `${S.ed.errors.length ? `<div class="card warn"><b>Fix before saving:</b><ul>${S.ed.errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
   <div class="sect">Bio</div><div class="card"><div class="muted">Name</div><input data-ed="name" value="${esc(m.name)}" maxlength="40" aria-label="Name">
-   <div class="grid2" style="margin-top:6px">${field('Team', sel('tid', teams, 'Team'))}${field('Position', sel('pos', E.POS.map(x => [x, x]), 'Position'))}
+   <div class="grid2" style="margin-top:6px">${field('Team', sel('tid', teams, 'Team'))}${field('Position', sel('pos', E.POS.map(x => [x, x]), 'Position'))}${field('Also plays', `<div class="pill-seg" style="margin:0">${E.POS.map(x => `<button class="${(m.pos2 || []).includes(x) ? 'on' : ''}" data-a="edPos2" data-v="${x}" ${x === m.pos ? 'disabled' : ''}>${x}</button>`).join('')}</div>`)}
    ${onTeam ? field('Jersey #', `<input data-ed="num" value="${esc(m.num)}" maxlength="2" inputmode="numeric" aria-label="Jersey number">`) : ''}${field(`Age (born ${L.season - m.age})`, num('age', 17, 45))}
    ${(() => { const ti = Math.round((+m.h || 0) / 2.54); const ft = Math.floor(ti / 12), inch = ti % 12; const o = (a, b, cur) => Array.from({ length: b - a + 1 }, (_, i) => a + i).map(v => `<option value="${v}" ${v === cur ? 'selected' : ''}>${v}</option>`).join('');
      return field(`Height (${ft}' ${inch}")`, `<div class="row" style="gap:4px"><select data-edh="ft" aria-label="Height feet">${o(5, 7, ft)}</select><span>ft</span><select data-edh="in" aria-label="Height inches">${o(0, 11, inch)}</select><span>in</span></div>`); })()}
@@ -1210,6 +1210,7 @@ const A = {
   returnFAs() { const L = S.L; if (!confirm('Re-sign every free agent who played for a team last season back to that team at a fair contract?')) return;
     const mine = E.freeAgents(L).filter(p => p.formerTid === L.userTid).length; const inc = mine > 0 && confirm(`Also bring back ${mine} of your own former players to your team?`);
     const r = E.returnFreeAgents(L, { includeUser: inc }); E.aiRosterFix(L); toast(`${r.length} free agents returned to their teams`); autosave(); render(); },
+  edPos2(d) { if (!S.ed) return; const m = S.ed.m; const a = new Set(m.pos2 || []); a.has(d.v) ? a.delete(d.v) : a.size < 2 ? a.add(d.v) : toast('Up to 2 secondary positions'); m.pos2 = [...a]; const y = window.scrollY; render(); window.scrollTo(0, y); },
   edAll(d) { if (!S.ed) return; const step = +d.d; let tot = 0;
     for (const k of E.EDIT_ATTRS) { const path = 'attrs.' + k; const v = Math.max(40, Math.min(99, (+edGet(path) || 0) + step)); edSet(path, v); tot += v;
       const inp = document.querySelector(`[data-ed="${path}"]`); if (inp) inp.value = v; const b = document.getElementById('v-' + path.replace('.', '-')); if (b) { b.textContent = v; b.className = qc(E.internalFor(v)); } }

@@ -1,5 +1,6 @@
 // Possession-by-possession basketball simulation with optional play-by-play text.
 import { rand, weighted, clamp, pick, randInt, normal } from './rng.js';
+import { eligiblePos } from './players.js';
 
 const QLEN = 720, OTLEN = 300;
 // pas is graded relative to position, so a playmaking PF (86 pas) should not dish like a PG
@@ -32,18 +33,23 @@ function emptyLine() { return { min: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, 
 
 // team-level hot/cold night (shooting form) so lopsided matchups aren't near-certain; tuned with scripts/realism.mjs
 export let FORM_SD = 0.09; export function setFormSd(v) { FORM_SD = v; }
+const LINEUP_CACHE = new Map();
 export function autoRotation(players) {
   // starters: best at each slot-ish; minutes by OVR rank
   const avail = players.filter(p => !p.injury).sort((a, b) => b.ovr - a.ovr);
-  const starters = [];
-  const need = [['PG', 'SG'], ['SG', 'SF', 'PG'], ['SF', 'SG', 'PF'], ['PF', 'C', 'SF'], ['C', 'PF']];
-  for (const opts of need) {
-    const c = avail.find(p => !starters.includes(p) && opts.includes(p.pos) && p.ovr >= (avail[7]?.ovr ?? 0));
-    if (c) starters.push(c);
-  }
-  for (const p of avail) if (starters.length < 5 && !starters.includes(p)) starters.push(p);
+  // one natural player per slot when sensible: natural 0, adjacent position -4, out of position -12 (OVR points)
+  const ADJ = { PG: ['SG'], SG: ['PG', 'SF'], SF: ['SG', 'PF'], PF: ['SF', 'C'], C: ['PF'] };
+  const pen = (slot, p) => { const el = eligiblePos(p); return el.includes(slot) || p.pos === slot ? 0 : el.some(x => ADJ[slot].includes(x)) ? 4 : 14; };
+  // best total over the top 10 healthy players (5 slots, exhaustive: 10P5 = 30k, cheap)
+  const pool = avail.slice(0, 8); const SL = ['PG', 'SG', 'SF', 'PF', 'C']; let bestSet = null, bv = -1e9; const cur = [];
+  const rec = (i, used, sc) => { if (i === 5) { if (sc > bv) { bv = sc; bestSet = cur.slice(); } return; }
+    for (let j = 0; j < pool.length; j++) if (!(used & (1 << j))) { cur[i] = pool[j]; rec(i + 1, used | (1 << j), sc + pool[j].ovr - pen(SL[i], pool[j])); } };
+  const key = pool.map(p => p.pid + ':' + p.pos + ':' + Math.round(p.ovr)).join(',');
+  const hit = LINEUP_CACHE.get(key); if (hit) bestSet = hit.map(i => pool[i]); else { rec(0, 0, 0); if (LINEUP_CACHE.size > 3000) LINEUP_CACHE.clear(); LINEUP_CACHE.set(key, (bestSet || []).map(p => pool.indexOf(p))); }
+  const bySlot = {}; (bestSet || []).forEach((p, i) => { bySlot[SL[i]] = p; });
+  const starters = ['PG', 'SG', 'SF', 'PF', 'C'].map(k => bySlot[k]).filter(Boolean);
   const rest = avail.filter(p => !starters.includes(p));
-  const order = [...starters.sort((a, b) => b.ovr - a.ovr), ...rest];
+  const order = [...starters.slice().sort((a, b) => b.ovr - a.ovr), ...rest];
   const MIN = [36, 35, 33, 31, 29, 22, 18, 14, 10, 7, 5, 0, 0, 0, 0];
   const minutes = {}; let tot = 0;
   order.forEach((p, i) => { minutes[p.pid] = MIN[i] ?? 0; tot += minutes[p.pid]; });
