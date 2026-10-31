@@ -4,7 +4,7 @@ import { clamp } from './rng.js';
 import { HOOKS, teamPlayers, getP, msg, msgBatch, teamOvr } from './league.js';
 import { resignOffer, userOffer, askingAmount, moodToward, prefYears } from './offseason.js';
 import { extendContract, extensionAsk } from './pgm2.js';
-import { evaluateTrade, playerValue, pickValue, validateTrade } from './trade.js';
+import { evaluateTrade, playerValue, pickValue, validateTrade, pickLabel } from './trade.js';
 
 // ---------- Fans ----------
 export function fanLabel(v) { return v >= 85 ? 'Electric' : v >= 70 ? 'Buzzing' : v >= 55 ? 'Loyal' : v >= 40 ? 'Restless' : v >= 25 ? 'Frustrated' : 'Apathetic'; }
@@ -115,7 +115,7 @@ export function tradeFeedback(L, o) {
   else {
     const short = ev.need - ev.giveV; lines.unshift(short > ev.need * 0.5 ? `Not even close.` : short > ev.need * 0.2 ? `You'll need to add more.` : `We're close.`);
     const pool = [...teamPlayers(L, o.tidA).filter(p => !o.aPids.includes(p.pid)).map(p => ({ kind: 'p', id: p.pid, name: p.name, v: playerValue(L, p) })),
-      ...L.picks.filter(k => k.tid === o.tidA && !o.aPicks.includes(k.id)).map(k => ({ kind: 'k', id: k.id, name: `${k.season} Round ${k.round} pick`, v: pickValue(L, k) }))]
+      ...L.picks.filter(k => k.tid === o.tidA && !o.aPicks.includes(k.id)).map(k => ({ kind: 'k', id: k.id, name: pickLabel(L, k), v: pickValue(L, k) }))]
       .filter(x => x.v >= short).sort((a, b) => a.v - b.v);
     for (const c of pool.slice(0, 6)) {
       const o2 = { ...o, aPids: c.kind === 'p' ? [...o.aPids, c.id] : o.aPids, aPicks: c.kind === 'k' ? [...o.aPicks, c.id] : o.aPicks };

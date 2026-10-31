@@ -63,12 +63,26 @@ export function executeMultiTrade(L, tids, moves) {
   for (const m of moves) { if (m.pid != null) getP(L, m.pid).tid = m.to; else L.picks.find(k => k.id === m.pick).tid = m.to; }
   syncDraftOrder(L);
   for (const tid of tids) { const t = L.teams[tid]; if (t.rotation) t.rotation = null; }
-  const nm = (m) => m.pid != null ? getP(L, m.pid).name : m.pick.replace(/-(\d)-/, ' R$1 ');
+  const nm = (m) => m.pid != null ? getP(L, m.pid).name : pickShort(L, m.pick);
   const text = `${tids.length}-team trade: ` + tids.map(t => `${L.teams[t].abbr} get ${moves.filter(m => m.to === t).map(nm).join(', ') || 'nothing'}`).join('; ') + '.';
   news(L, `🔁 ${text}`, 'trade', tids[0]); logTx(L, { type: 'trade', text }, moves.filter(m => m.pid != null).map(m => m.pid));
   return { ok: true, text };
 }
 // v43: after a pick changes hands, both the stored order and the live draft's order follow it (they are separate arrays after a save reload)
+// v44: pick numbers. Exact once this year's order is set (lottery done / draft live); otherwise projected from current records (worst = #1).
+export function pickNumber(L, k) {
+  if (!k) return null; const ord = L.draft?.order?.some(d => d.id === k.id) ? L.draft.order : L.draftOrder;
+  const d = ord?.find(o => o.id === k.id && o.pick); if (d) return { n: d.pick, inRound: d.pick - (k.round - 1) * Math.round(ord.length / Math.max(1, Math.max(...ord.map(o => o.round)))), exact: true };
+  const act = L.teams.filter(t => !t.inactive); const N = act.length;
+  const st = standings(L); const gp = st.some(r => r.gp > 0);
+  const pct = (tid) => gp ? st[tid]?.pct ?? 0.5 : (L.teams[tid].lastWinPct ?? 0.5);
+  const rk = act.map(t => t.tid).sort((a, b) => pct(a) - pct(b) || a - b).indexOf(k.orig);
+  if (rk < 0) return null; return { n: (k.round - 1) * N + rk + 1, inRound: rk + 1, exact: false };
+}
+export function pickLabel(L, k) { const q = pickNumber(L, k); const ab = L.teams[k.orig]?.abbr || '?';
+  return !q ? `${k.season} Rd ${k.round} (${ab})` : q.exact ? `${k.season} Rd ${k.round} #${q.n} (${ab})` : `${k.season} Rd ${k.round} (${ab}, proj. #${q.n})`; }
+export function pickShort(L, id) { const k = L.picks.find(z => z.id === id) || L.pickLog?.[id]; if (!k) return id.replace(/-(\d)-/, ' R$1 ');
+  const q = pickNumber(L, k); const ab = L.teams[k.orig]?.abbr || '?'; return `${k.season} R${k.round} ${q ? (q.exact ? '#' : 'proj #') + q.n + ' ' : ''}${ab}`; }
 export function syncDraftOrder(L) { for (const arr of [L.draftOrder, L.draft?.order]) if (arr) for (const d of arr) { const pk = L.picks.find(p => p.id === d.id); if (pk) d.tid = pk.tid; } }
 export function executeTrade(L, o) {
   for (const id of o.aPids) { const p = getP(L, id); p.tid = o.tidB; }
@@ -77,7 +91,7 @@ export function executeTrade(L, o) {
   for (const id of o.bPicks) L.picks.find(p => p.id === id).tid = o.tidA;
   syncDraftOrder(L);
   for (const tid of [o.tidA, o.tidB]) { const t = L.teams[tid]; if (t.rotation) t.rotation = null; }
-  const desc = (pids, picks) => [...pids.map(id => getP(L, id).name), ...picks.map(id => id.replace(/-(\d)-/, ' R$1 '))].join(', ') || 'nothing';
+  const desc = (pids, picks) => [...pids.map(id => getP(L, id).name), ...picks.map(id => pickShort(L, id))].join(', ') || 'nothing';
   const text = `${L.teams[o.tidA].abbr} trade ${desc(o.aPids, o.aPicks)} to ${L.teams[o.tidB].abbr} for ${desc(o.bPids, o.bPicks)}.`;
   if (o.tidA === L.userTid || o.tidB === L.userTid) {
     const g = L.gm; g.trades = (g.trades || 0) + 1; g.tradesBy ||= {}; g.tradesBy[L.season] = (g.tradesBy[L.season] || 0) + 1;
