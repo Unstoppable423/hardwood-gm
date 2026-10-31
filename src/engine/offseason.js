@@ -758,7 +758,7 @@ export function applyStart(L, start) {
 }
 export function fairContract(L, p) { return Math.round(clamp(marketValue(p, L.season), minSalary(L.season), maxSalary(L.season, p)) / 10) * 10; }
 // commissioner-style signing: any FA to any team at a fair deal, ignoring interest and the cap
-export function commissionerSign(L, p, tid) { L.fa ||= { offers: {}, round: 0 }; L.fa.offers ||= {}; delete L.fa.offers[p.pid]; sign(L, p, tid, fairContract(L, p), prefYears(p, L)); return p; }
+export function commissionerSign(L, p, tid) { L.fa ||= { offers: {}, round: 0 }; L.fa.offers ||= {}; delete L.fa.offers[p.pid]; sign(L, p, tid, fairContract(L, p), 4); return p; } // always 4-year deals
 // Undo free-agent departures: every FA who played for a team last season goes back there on a fair deal.
 // includeUser: also players whose previous team is the user's (needs the user's confirmation in the UI).
 export function returnFreeAgents(L, { includeUser = false } = {}) {

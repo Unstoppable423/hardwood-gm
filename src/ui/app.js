@@ -982,7 +982,7 @@ function modalView() { return ({ signTo: signToModal, offer: offerModal, holiday
 const structOK = (L, kind) => kind !== 'ext' && !(L.phase === 'REGULAR' && kind === 'fa');
 function signToModal() {
   const L = S.L, p = E.getP(L, S.modal.pid); const amt = E.fairContract(L, p);
-  return sheetHead(`Sign ${esc(p.name)} to…`, `Commissioner signing · ${M(amt)}/yr · ${E.prefYears(p, L)} yrs · ignores interest and cap`) + `<div class="wrap"><div class="list">${L.teams.filter(t => !t.inactive).map(t => `<button class="it" style="width:100%;text-align:left" data-a="signToTeam" data-tid="${t.tid}">${esc(t.city + ' ' + t.name)}${t.tid === p.formerTid ? ' <span class="tag">previous team</span>' : ''} <span class="muted">${E.activeCount(L, t.tid)}/${E.ROSTER_MAX}</span></button>`).join('')}</div></div>`;
+  return sheetHead(`Sign ${esc(p.name)} to…`, `Commissioner signing · ${M(amt)}/yr · 4 yrs · ignores interest and cap`) + `<div class="wrap"><div class="list">${L.teams.filter(t => !t.inactive).map(t => `<button class="it" style="width:100%;text-align:left" data-a="signToTeam" data-tid="${t.tid}">${esc(t.city + ' ' + t.name)}${t.tid === p.formerTid ? ' <span class="tag" style="background:#e3e7ec;color:#111">Previous team</span>' : ''} <span class="muted">${E.activeCount(L, t.tid)}/${E.ROSTER_MAX}</span></button>`).join('')}</div></div>`;
 }
 function offerModal() {
   const L = S.L, p = E.getP(L, S.modal.pid); const kind = S.modal.kind;
