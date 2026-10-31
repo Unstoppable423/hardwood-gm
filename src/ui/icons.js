@@ -37,3 +37,12 @@ export function starRow(n2, size = 16) {
   const f = Math.floor(n2 / 2), h = n2 % 2, e = 5 - f - h;
   return `<span class="stars" role="img" aria-label="${n2 / 2} of 5 stars">${starSvg('full', size).repeat(f)}${h ? starSvg('half', size) : ''}${starSvg('empty', size).repeat(e)}</span>`;
 }
+
+// v45: current + potential. cur2/pot2 = half-stars 0..10. Solid gold = current, faded gold = potential, outline = beyond.
+export function starRow2(cur2, pot2, size = 16) {
+  pot2 = Math.max(cur2, pot2); const solid = `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="${STAR}" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+  const outline = `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="${STAR}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+  let h = ''; for (let i = 0; i < 5; i++) { const c = Math.max(0, Math.min(2, cur2 - 2 * i)), q = Math.max(0, Math.min(2, pot2 - 2 * i));
+    h += `<span class="st">${outline}${q ? `<span class="st-pot${q === 1 ? ' h' : ''}">${solid}</span>` : ''}${c ? `<span class="st-half${c === 2 ? ' f' : ''}">${solid}</span>` : ''}</span>`; }
+  return `<span class="stars" role="img" aria-label="${cur2 / 2} of 5 stars now, potential ${pot2 / 2}">${h}</span>`;
+}

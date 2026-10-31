@@ -1,6 +1,6 @@
 // Hardwood GM UI — PGM2-style page flow (hamburger drawer, teal header, page stack, green CTAs)
 import * as E from '../engine/index.js';
-import { icon, injIcon, starRow, starSvg } from './icons.js';
+import { icon, injIcon, starRow, starRow2, starSvg } from './icons.js';
 import { saveSlot, loadSlot, listSlots, deleteSlot, exportJSON } from './storage.js';
 
 const $ = (s) => document.querySelector(s);
@@ -29,7 +29,8 @@ const devWord = (p) => devVisible(p) ? DEVW[E.devTrait(p)] || '' : '';
 const scoutAcc = () => E.staffEffects(S.L, S.L.userTid).scout;
 const potOf = (p) => p.tid === S.L.userTid && p.age >= 25 ? p.pot : E.scoutedPot(p, scoutAcc());
 const hideR = (p) => p.tid === -2 && (S.L.settings.hideRookieRatings || p.draft?.year > S.L.season);
-const stars = (pot) => { const n2 = Math.max(1, Math.min(10, Math.round((pot - 45) / 4.5))); return starRow(n2); };
+const half2 = (v) => Math.max(1, Math.min(10, Math.round((E.dispRating(v) - 50) / 4))); // v45: display-scale stars (86 POT = 4.5)
+const stars = (pot, cur) => cur == null ? starRow(half2(pot)) : starRow2(half2(cur), half2(pot)); // v45: solid = now, faded = potential
 const pg = (s, k) => s.gp ? (s[k] / s.gp).toFixed(1) : '0.0';
 const rebOf = (s) => s.orb + s.drb;
 // v42: full box-score columns. s = totals (gp + counting stats); per = divide by gp (averages) or 1 (single game). Missing fields show '—'.
@@ -490,7 +491,7 @@ PAGES.player = (pg0) => {
    <div class="muted">${p.tid >= 0 && p.num != null ? `#${esc(p.num)} · ` : ''}${E.posLabel(p)} · Age ${age} · <span class="nw">${ht(p.h)}</span> · <span class="nw">${Math.round(p.w * 2.20462)} lb</span></div><div class="muted">${p.tid >= 0 ? esc(T(p.tid).city + ' ' + T(p.tid).name) : p.tid === -1 ? 'Free agent' : p.tid === -2 ? `${esc(p.college || p.country)} · ${p.draft?.year} draft` : p.tid === -6 ? 'Fantasy draft pool' : p.hiatus ? `Retired (${p.hiatus.from})` : 'Retired'}</div>
    ${p.injury ? `<div class="inj">${injIcon()} ${esc(p.injury.type)} — out ~${Math.ceil(p.injury.games)} game(s)</div>` : ''}</div>
    <div class="rbox"><div class="h">RATING</div><div class="n ${hideR(p) ? '' : qc(p.ovr)}">${hideR(p) ? '?' : R(p.ovr)}</div><div class="w">${devWord(p) || '&nbsp;'}</div></div></div>
-   <div class="pcols"><div><span class="muted">POT</span> ${stars(pot)}</div><div><span class="muted">EXP</span> <b>${yrsPro(p)}</b></div><div><span class="muted">Contract</span> <b>${p.contract ? M(p.contract.amt) : '—'}</b></div></div>` +
+   <div class="pcols"><div><span class="muted">POT</span> ${stars(pot, hideR(p) ? null : p.ovr)}</div><div><span class="muted">EXP</span> <b>${yrsPro(p)}</b></div><div><span class="muted">Contract</span> <b>${p.contract ? M(p.contract.amt) : '—'}</b></div></div>` +
     tabs('player', [['skills', 'Skills'], ['contract', 'Contract'], ['games', 'Games'], ['career', 'Career']], 'skills');
   let body = tb === 'skills' ? skillsTab(p) : tb === 'contract' ? contractTab(p) + txSection(p) : tb === 'games' ? gamesTab(p) : careerTab(p, pot);
   const acts = [];
@@ -706,7 +707,7 @@ function teamNeeds(L, tid) {
 function prospectRow(p, rank, onClock) {
   const sl = (S.L.shortlist || []).includes(p.pid);
   return `<div class="it" data-a="player" data-pid="${p.pid}"><b style="width:24px" class="muted">${rank}</b>${avatar(p, 38)}
-  <div class="grow"><div class="nm">${sl ? starSvg('full', 14) + ' ' : ''}${esc(p.name)}</div><div class="meta">${p.pos} · ${E.ageNow(S.L, p)}y · ${ht(p.h)} · ${esc(p.college || p.country)}</div><div class="meta">RD ${projRound(rank - 1)} PROJ · ${stars(potOf(p))}${S.L.phase === 'DRAFT' && S.needTid != null && E.fillsNeed(S.L, p, S.needTid) ? ' <span class="tag needtag">Fills need</span>' : ''}</div></div>
+  <div class="grow"><div class="nm">${sl ? starSvg('full', 14) + ' ' : ''}${esc(p.name)}</div><div class="meta">${p.pos} · ${E.ageNow(S.L, p)}y · ${ht(p.h)} · ${esc(p.college || p.country)}</div><div class="meta">RD ${projRound(rank - 1)} PROJ · ${stars(potOf(p), hideR(p) ? null : p.ovr)}${S.L.phase === 'DRAFT' && S.needTid != null && E.fillsNeed(S.L, p, S.needTid) ? ' <span class="tag needtag">Fills need</span>' : ''}</div></div>
   ${onClock ? `<button class="sm go" data-a="draftPick" data-pid="${p.pid}">Draft</button>` : ''}<div class="rt">${hideR(p) ? sq(null) : sq(p.ovr)}</div></div>`;
 }
 // ---------- fantasy draft room (PGM2 draft-room style) ----------
@@ -1352,7 +1353,7 @@ document.addEventListener('change', (e) => {
   if (el.dataset.ctt != null) { const ct = S.ct, i = +el.dataset.ctt, old = ct.teams[i]; ct.teams[i] = +el.value; for (const k of Object.keys(ct.mv)) if (ct.mv[k] === old || (k[0] === 'p' ? E.getP(S.L, +k.slice(2))?.tid : S.L.picks.find(x => x.id === k.slice(2))?.tid) === old) delete ct.mv[k]; render(); return; }
   if (el.dataset.ctd) { S.ct.mv[el.dataset.ctd] = +el.value; render(); return; }
   if (el.dataset.ng) { const k = el.dataset.ng; let v = el.value; if (v === 'true') v = true; else if (v === 'false') v = false; else if (!isNaN(+v) && k !== 'gmName') v = +v; S.ng[k] = v; if (['archetype', 'rosters', 'start', 'startYear'].includes(k)) render(); return; }
-  if (el.dataset.set) { const k = el.dataset.set; let v = el.value; if (v === 'true') v = true; else if (v === 'false') v = false; else if (!isNaN(+v)) v = +v; S.L.settings[k] = v; E.ensureSettings(S.L); autosave(); render(); toast('Setting saved'); return; }
+  if (el.dataset.set) { const k = el.dataset.set; let v = el.value; if (v === 'true') v = true; else if (v === 'false') v = false; else if (!isNaN(+v)) v = +v; S.L.settings[k] = v; E.ensureSettings(S.L); if (k === 'pickYears') E.ensureFuturePicks(S.L); autosave(); render(); toast('Setting saved'); return; }
   if (el.dataset.ngf) { const k = el.dataset.ngf; let v = el.value; if (v === 'true') v = true; else if (v === 'false') v = false; else if (!isNaN(+v)) v = +v; if (k === 'draftClasses') S.ng.draftClasses = v; else (S.ng.franchise ||= {})[k] = v; render(); return; }
   if (el.dataset.edh) { edUS(el); return; }
   if (el.dataset.ed) { edInput(el, true); return; }

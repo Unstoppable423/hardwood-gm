@@ -9,7 +9,7 @@ import { taxActive, taxLine, applyRules, stableRosters } from './franchise.js';
 import { capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, LOTTERY_WEIGHTS, PHASES } from './constants.js';
 import { marketValue, progress, anchorRatings, attrTops, anchorAttrTails, longevity, devTrait, generateVeteran, generateProspect, prospectFromReal, dispRating, ovrFromAttrs, eligiblePos } from './players.js';
 import { HOOKS, teamPlayers, getP, reindex, payroll, cap, msg, msgBatch, news, diff, teamName, teamOvr, standings, confSeeds, makeSchedule,
-  startPlayoffs, seasonDone, resetSeasonStats, prodScore, createDraftClass, addPicksForSeason, genStaff, staffEffects, draftControls, logTx } from './league.js';
+  startPlayoffs, seasonDone, resetSeasonStats, prodScore, createDraftClass, addPicksForSeason, ensureFuturePicks, genStaff, staffEffects, draftControls, logTx } from './league.js';
 
 // ================= phase machine =================
 export function advance(L) {
@@ -624,7 +624,7 @@ function leaveDraft(L) {
   for (const p of prospects(L)) { p.tid = -1; p.udfa = true; p.draft = { year: S, round: null, pick: null, tid: null }; }
   const real = L.settings.draftClasses === 'real' ? (L.data.udfa[String(S)] || []) : [];
   for (const r of real) { const p = prospectFromReal({ ...r, dr: null, dp: null }, S, { histTendency: L.settings.histTendency }); p.tid = -1; p.udfa = true; p.devTrait = devTrait(p); p.draft = { year: S, round: null, pick: null, tid: null }; resetSeasonStats(p, L.season); L.players.push(p); }
-  addPicksForSeason(L, S + 2);
+  addPicksForSeason(L, S + 2); ensureFuturePicks(L);
   const top = L.draft.log.slice(0, 5).map(d => `${d.pick}. ${d.name} (${L.teams[d.tid].abbr})`).join(' · ');
   news(L, `${S} Draft top picks: ${top}`, 'draft');
   reindex(L);
@@ -637,7 +637,7 @@ function cpuResign(L, p) {
   else { p.formerTid = p.tid; p.tid = -1; p.contract = null; }
 }
 export function enterResign(L) {
-  L.phase = 'RESIGN'; L.season += 1;
+  L.phase = 'RESIGN'; L.season += 1; ensureFuturePicks(L);
   for (const p of L.players) { const c = p.contract; if (c?.raise && c.exp >= L.season && L.season > (c.first ?? L.season)) c.amt = salaryInYear(c, L.season); }
   L.deadMoney = L.deadMoney.filter(d => d.exp >= L.season);
   L.expiring = []; const managed = managedSet(L);

@@ -24,7 +24,8 @@ export const FS_DEFAULTS = {
   retirement: true,
   morale: true,                          // player morale and trade requests
   cpuMoves: false,                       // with morale OFF: allow CPU-CPU trades and CPU free-agent poaching (off = stable rosters)
-  gmFiring: false,                       // v41: owner can fire the GM (off = never fired)
+  gmFiring: false,
+  pickYears: 7,                          // v45: seasons of future picks every team tracks                       // v41: owner can fire the GM (off = never fired)
   careers: 'real',                       // real-life career arcs for real players: real | mostly | random
 };
 // morale off + cpuMoves off: players re-sign (user: at fair ask, no patience limit; CPU: always), no CPU-CPU trades or FA poaching
@@ -71,6 +72,7 @@ export const FS_META = [
   ['morale', 'Morale & trade requests', YN, 'Players'], ['cpuMoves', 'CPU trades/free agency (when morale off)', YN, 'Players'],
   ['retirement', 'Retirements', YN, 'Players'],
   ['gmFiring', 'GM can be fired', YN, 'League'],
+  ['pickYears', 'Future pick years', [[2, '2'], [4, '4'], [7, '7'], [10, '10']], 'League'],
   ['simDifficulty', 'Sim difficulty', [['Easy', 'Easy'], ['Normal', 'Normal'], ['Hard', 'Hard'], ['Insane', 'Insane']], 'League'],
   ['rosterMin', 'Roster minimum', [[8, '8'], [10, '10'], [12, '12'], [13, '13'], [14, '14']], 'League'],
   ['rosterMax', 'Roster maximum', [[13, '13'], [14, '14'], [15, '15'], [17, '17'], [20, '20']], 'League'],

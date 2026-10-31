@@ -18,6 +18,7 @@ export function careerOf(L, p) {
   const nm = normName(p.name); const dy = p.draft?.realYear ?? p.draft?.year;
   let k = p.arcKey || (C[nm + '|' + (dy ?? 'U')] ? nm + '|' + (dy ?? 'U') : null);
   if (!k) { const ks = index(C)[nm] || []; k = ks.length === 1 ? ks[0] : null; }
+  if (!k && p.aka) { const na = normName(p.aka); k = C[na + '|' + (dy ?? 'U')] ? na + '|' + (dy ?? 'U') : ((index(C)[na] || []).length === 1 ? index(C)[na][0] : null); } // v45: real name changes (William Avery, Metta World Peace)
   p.arcKey = k; return k ? C[k] : null;
 }
 // top 3%: our own curve on the absolute production gap above the 97th percentile, so only a handful of historic seasons reach 99
@@ -55,7 +56,7 @@ export function applyArc(L, p, S) {
   }
   const target = scaledTarget(L, p, arcTarget(e)); const ww = e[2] < 20 ? w * 0.5 : w; // injury-shortened year: weaker pull
   const d = Math.round(ww * (target - p.ovr) + normal(0, peakTargetOf(L, p) != null && target >= arcTarget(e) + 1 ? 0.4 : 1));
-  if (d) { for (const k of Object.keys(p.ratings)) if (k !== 'sta' && k !== 'dur' && typeof p.ratings[k] === 'number') p.ratings[k] = k === 'sco' ? clamp(Math.round(p.ratings[k] + d * 0.5), 1, Math.max(92, p.ratings[k])) : clamp(p.ratings[k] + d, 1, 99); p.ovr = ovrFromAttrs(p.ratings, p.pos); }
+  if (d) { for (const k of Object.keys(p.ratings)) if (k !== 'sta' && k !== 'dur' && typeof p.ratings[k] === 'number') p.ratings[k] = k === 'sco' ? clamp(Math.round(p.ratings[k] + d * 0.5), 1, Math.max(92, p.ratings[k])) : clamp(p.ratings[k] + d, 20, 99); p.ovr = ovrFromAttrs(p.ratings, p.pos); }
   const ap = arcPot(L, p, S + 1); p.pot = Math.max(p.ovr, ap ?? p.ovr); p.histPot = null;
   return null;
 }
@@ -75,3 +76,16 @@ export function applyPeakNow(L, p, S) {
     p.ovr = ovrFromAttrs(p.ratings, p.pos); }
   p.pot = Math.max(p.ovr, arcPot(L, p, S + 1) ?? p.ovr);
 }
+
+// v45: real draftees' draft-day OVR from their real first NBA season (minus a bit per year before they arrived), blended with the
+// draft-slot estimate; POT follows the real career (arcPot). Real draftees who never played in the NBA are busts.
+export function calibrateRealProspect(L, p, s) {
+  if (!p.real || p.calV45 || careerMode(L) === 'random') return; p.calV45 = true;
+  const c = careerOf(L, p);
+  if (!c) { if (s <= ARC_END - 1 && p.arcKey === null || !c) { p.arcKey = null; const d = -7; shiftAll(p, d); p.pot = Math.max(p.ovr, Math.min(p.pot, p.ovr + 3)); p.histPot = null; } return; }
+  const ys = Object.keys(c.a).map(Number).sort((a, b) => a - b); const fy = ys[0]; const ft = arcTarget(c.a[String(fy)]);
+  const est = ft - 2.5 * Math.max(0, fy - s) - 1; const goal = Math.round(0.65 * est + 0.35 * p.ovr);
+  shiftAll(p, goal - p.ovr);
+  const ap = arcPot(L, p, s); if (ap != null) { p.pot = Math.max(p.ovr, ap); p.histPot = null; }
+}
+function shiftAll(p, d) { if (!d) return; for (const k of Object.keys(p.ratings)) if (k !== 'sta' && k !== 'dur' && typeof p.ratings[k] === 'number') p.ratings[k] = k === 'sco' ? clamp(Math.round(p.ratings[k] + d * 0.5), 20, 92) : clamp(p.ratings[k] + d, 20, 99); p.ovr = ovrFromAttrs(p.ratings, p.pos); }

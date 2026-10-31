@@ -191,7 +191,7 @@ export function prospectFromReal(raw, draftYear, opts = {}) {
   let base = raw.dr === 1 ? 61 - 0.33 * (slot - 1) : raw.dr === 2 ? 49 - 0.12 * (slot - 30) : 44;
   base += -(22 - raw.age) * 1.0 + normal(0, 3);
   fillProspect(p, base, opts, raw.peak);
-  p.real = true; p.projPick = raw.dp || null; p.born = draftYear - Math.round(raw.age);
+  p.real = true; p.projPick = raw.dp || null; p.born = draftYear - Math.round(raw.age); if (raw.aka) p.aka = raw.aka;
   return p;
 }
 function fillProspect(p, base, opts, peak = null) {

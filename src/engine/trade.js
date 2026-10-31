@@ -24,10 +24,10 @@ export function projectedSlot(L, tid) {
 export function pickValue(L, pk) {
   let slot = projectedSlot(L, pk.orig);
   const years = pk.season - L.season - (['RESIGN', 'FA1', 'FA2', 'FA3', 'SUMMER', 'PRESEASON', 'REGULAR', 'PLAYOFFS'].includes(L.phase) ? 0 : 0);
-  if (years >= 1) slot = Math.round(slot * 0.5 + 15 * 0.5); // future picks regress to middle
+  if (years >= 1) { const w = Math.max(0, 0.5 - 0.1 * (years - 1)); slot = Math.round(slot * w + 15 * (1 - w)); } // future picks regress to middle (fully by ~5 years out)
   if (L.draftOrder && pk.season === L.season) { const o = L.draftOrder.find(x => x.id === pk.id); if (o) slot = o.pick - (pk.round === 2 ? 29 : 0); }
   const base = pk.round === 1 ? 260 * Math.pow(0.9, slot - 1) + 25 : 18 * Math.pow(0.97, slot - 1) + 4;
-  return Math.round(base * (years >= 1 ? 0.85 : 1));
+  return Math.round(base * (years >= 1 ? 0.85 * Math.pow(0.88, years - 1) : 1)); // v45: far-future picks discounted
 }
 const salaryOf = (L, pids) => pids.reduce((s, id) => s + (getP(L, id).contract?.amt || 0), 0);
 // offer: { tidA, tidB, aPids, aPicks, bPids, bPicks } — A gives aPids/aPicks to B, receives bPids/bPicks

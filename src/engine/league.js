@@ -8,7 +8,7 @@ import { ERA, syncEra } from './era.js';
 import { applyRosterFile } from './rosterfile.js';
 import { ensureSettings, applyRules, deadlineDay, simEdge, seriesLen } from './franchise.js';
 import { TEAMS, capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, DIFFICULTY, PHASE_LABEL } from './constants.js';
-import { careerMode, arcPot, applyPeakNow } from './careers.js';
+import { careerMode, arcPot, applyPeakNow, calibrateRealProspect } from './careers.js';
 import { START_FUTURE, histPotFromPeak, attrTops, playerFromStats, finalizeStartRatings, prospectFromReal, generateProspect, generateVeteran, devTrait, marketValue,
   setNextPid, getNextPid, POS_OVERRIDE, REAL_STARTERS, POS_ELIG, eligiblePos, genName, ovrFromAttrs } from './players.js';
 import { simGame, autoRotation } from './sim.js';
@@ -26,6 +26,8 @@ export function markRealStarters(L) { if (L.rsMarked || L.season < 1997 || L.sea
   for (const t of L.teams) { const names = REAL_STARTERS[t.abbr]; if (!names) continue; for (const p of L.players) if (p.tid === t.tid && names.includes(p.name)) { p.rs = t.tid; } }
   for (const t of L.teams) if (REAL_STARTERS[t.abbr] && t.autoRotation !== false) t.rotation = null; }
 export function repairSave(L) {
+  if (L.picks && L.teams && L.season) ensureFuturePicks(L);
+  if (L.players && L.data?.careers) for (const p of L.players) if (p.tid === -2 && p.real && !p.calV45 && p.draft?.year) calibrateRealProspect(L, p, p.draft.year); // v45 migration // v45 migration: fill missing future years for original owners
   let mx = 0; for (const p of L.players) if (p.pid > mx) mx = p.pid; setNextPid(Math.max(getNextPid(), mx + 1));
   const groups = new Map(); for (const p of L.players) { if (!groups.has(p.pid)) groups.set(p.pid, []); groups.get(p.pid).push(p); }
   let fixed = 0;
@@ -227,7 +229,7 @@ export function newLeague(data, opts = {}) {
   for (const t of L.teams) if (!t.inactive) for (const role of ['HC', 'AC', 'SC', 'TR']) t.staff[role] = genStaff(role, season);
   L.staffPool = Array.from({ length: 24 }, (_, i) => genStaff(['HC', 'AC', 'SC', 'TR'][i % 4], season));
   // draft picks for next 2 drafts
-  for (const s of [season, season + 1]) addPicksForSeason(L, s);
+  for (const s of [season, season + 1]) addPicksForSeason(L, s); ensureFuturePicks(L);
   L.dcGlobal = opts.dcGlobal && typeof opts.dcGlobal === 'object' ? JSON.parse(JSON.stringify(opts.dcGlobal)) : {};
   createDraftClass(L, season);
   startPreseason(L, true);
@@ -240,6 +242,9 @@ export function newLeague(data, opts = {}) {
   return L;
 }
 export function rookieScale(season, pick) { return Math.max(minSalary(season), Math.round(capFor(season) * 0.105 * Math.pow(0.93, pick - 1) / 10) * 10); }
+// v45: every team owns/tracks R1+R2 picks this many seasons ahead (setting pickYears, default 7). Traded picks keep their owner.
+export function ensureFuturePicks(L) { const n = Math.max(1, Math.min(10, +(L.settings?.pickYears ?? 7) || 7)); let added = 0; const before = L.picks.length;
+  for (let s = L.season + 1; s <= L.season + n; s++) addPicksForSeason(L, s); added = L.picks.length - before; return added; }
 export function addPicksForSeason(L, s) {
   for (const t of L.teams) if (!t.inactive) for (const r of [1, 2]) if (!L.picks.some(p => p.season === s && p.round === r && p.orig === t.tid))
     L.picks.push({ id: `${s}-${r}-${t.abbr}`, season: s, round: r, orig: t.tid, tid: t.tid });
@@ -290,7 +295,8 @@ function baseDraftClass(L, s) {
   // 2005 CBA age limit: from the 2006 Draft every prospect is at least 19 and a year out of high school
   if (L.settings.realHistory !== false && s >= 2006) for (const p of ps) if (p.age < 19) { p.age = 19; if (/high school/i.test(p.college || '')) p.college = 'College (1 yr)'; }
   for (const p of ps) { p.tid = -2; p.draft = { year: s, round: null, pick: null, tid: null }; p.devTrait = devTrait(p); resetSeasonStats(p, L.season); L.players.push(p); }
-  if (careerMode(L) !== 'random') for (const p of ps) { const ap = p.real ? arcPot(L, p, s) : null; if (ap != null) { p.pot = Math.max(p.ovr, Math.round(0.85 * ap + 0.15 * p.pot)); p.histPot = null; } else if (p.real) p.arcKey = null; }
+  for (const p of ps) calibrateRealProspect(L, p, s);
+  if (careerMode(L) !== 'random') for (const p of ps) { if (p.calV45) continue; const ap = p.real ? arcPot(L, p, s) : null; if (ap != null) { p.pot = Math.max(p.ovr, Math.round(0.85 * ap + 0.15 * p.pot)); p.histPot = null; } else if (p.real) p.arcKey = null; }
   reindex(L);
 }
 
