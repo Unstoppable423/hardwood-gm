@@ -130,8 +130,8 @@ export function simGame(home, away, opts = {}) {
   function rebound(off, def, shotType) {
     const offReb = off.on.reduce((s, c) => s + c.reb, 0) / 5, defReb = def.on.reduce((s, c) => s + c.reb, 0) / 5;
     const orbP = clamp(0.29 + (offReb - defReb) / 220 + (shotType === 3 ? 0.02 : 0), 0.15, 0.45);
-    if (rand() < orbP) { const r = weighted(off.on, c => Math.pow(c.reb, 1.6) * (c.h - 175)); off.line[r.pid].orb++; say(`${fmt(r)} grabs the offensive board.`); return true; }
-    const r = weighted(def.on, c => Math.pow(c.reb, 1.6) * (c.h - 175)); def.line[r.pid].drb++; return false;
+    if (rand() < orbP) { const r = weighted(off.on, c => Math.pow(c.reb, 1.6) * Math.max(10, c.h - 160)); off.line[r.pid].orb++; say(`${fmt(r)} grabs the offensive board.`); return true; }
+    const r = weighted(def.on, c => Math.pow(c.reb, 1.6) * Math.max(10, c.h - 160)); def.line[r.pid].drb++; return false;
   }
   function foulCheck(tm, c) {
     if (tm.line[c.pid].pf < 6) return;

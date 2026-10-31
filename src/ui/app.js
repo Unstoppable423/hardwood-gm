@@ -32,6 +32,18 @@ const hideR = (p) => p.tid === -2 && (S.L.settings.hideRookieRatings || p.draft?
 const stars = (pot) => { const n2 = Math.max(1, Math.min(10, Math.round((pot - 45) / 4.5))); return starRow(n2); };
 const pg = (s, k) => s.gp ? (s[k] / s.gp).toFixed(1) : '0.0';
 const rebOf = (s) => s.orb + s.drb;
+// v42: full box-score columns. s = totals (gp + counting stats); per = divide by gp (averages) or 1 (single game). Missing fields show '—'.
+const FULL_HEAD = ['GP', 'GS', 'MIN', 'FGM-FGA', 'FG%', '3PM-3PA', '3P%', 'FTM-FTA', 'FT%', 'OREB', 'DREB', 'REB', 'AST', 'STL', 'BLK', 'TOV', 'PF', 'PTS'];
+function fullCells(s, per = s.gp || 1, { game = false } = {}) {
+  const has = (k) => s[k] != null && !Number.isNaN(s[k]); const d = game ? 0 : 1;
+  const v = (k) => has(k) ? (s[k] / per).toFixed(d) : '—';
+  const ma = (m, a) => has(m) && has(a) ? `${(s[m] / per).toFixed(d)}-${(s[a] / per).toFixed(d)}` : '—';
+  const pc = (m, a) => has(m) && has(a) ? (s[a] ? (s[m] / s[a] * 100).toFixed(1) : '-') : '—';
+  const reb = has('reb') ? (s.reb / per).toFixed(d) : has('orb') && has('drb') ? ((s.orb + s.drb) / per).toFixed(d) : '—';
+  const c = [game ? (s.gs ? 'Y' : has('gs') ? '' : '—') : (has('gs') ? s.gs : '—'), v('min'), ma('fgm', 'fga'), pc('fgm', 'fga'), ma('tpm', 'tpa'), pc('tpm', 'tpa'), ma('ftm', 'fta'), pc('ftm', 'fta'), v('orb'), v('drb'), reb, v('ast'), v('stl'), v('blk'), v('tov'), v('pf'), `<b>${v('pts')}</b>`];
+  return (game ? c : [s.gp, ...c]).map(x => `<td>${x}</td>`).join('');
+}
+const fullHead = (game) => (game ? FULL_HEAD.slice(1) : FULL_HEAD).map(h => `<th>${h === 'GS' && game ? 'ST' : h}</th>`).join('');
 const ht = (cm) => { const t = Math.round(cm / 2.54); return `${Math.floor(t / 12)}' ${t % 12}"`; };
 const yrsPro = (p) => p.draft?.year ? Math.max(0, S.L.season - p.draft.year - 1) : (p.prior?.yrs || 0) + p.career.length;
 const yrsLeft = (p) => p.contract ? p.contract.exp - S.L.season + 1 - (['AWARDS', 'STAFF', 'LOTTERY', 'DRAFT'].includes(S.L.phase) ? 1 : 0) : 0;
@@ -404,8 +416,8 @@ function schemeCard(L, tid) {
 }
 function statsTable(ps, key = 'reg') {
   const rows = ps.filter(p => p.stats[key]?.gp).sort((a, b) => b.stats[key].pts / b.stats[key].gp - a.stats[key].pts / a.stats[key].gp);
-  return `<div class="tscroll"><table><tr><th class="l">Player</th><th>GP</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>FG%</th><th>3P%</th><th>FT%</th></tr>
-  ${rows.map(p => { const s = p.stats[key]; return `<tr data-a="player" data-pid="${p.pid}"><td class="l">${esc(p.name.split(' ').slice(-1)[0])}</td><td>${s.gp}</td><td>${pg(s, 'min')}</td><td><b>${pg(s, 'pts')}</b></td><td>${(rebOf(s) / s.gp).toFixed(1)}</td><td>${pg(s, 'ast')}</td><td>${pg(s, 'stl')}</td><td>${pg(s, 'blk')}</td><td>${s.fga ? (s.fgm / s.fga * 100).toFixed(1) : '-'}</td><td>${s.tpa ? (s.tpm / s.tpa * 100).toFixed(1) : '-'}</td><td>${s.fta ? (s.ftm / s.fta * 100).toFixed(1) : '-'}</td></tr>`; }).join('') || '<tr><td colspan="11" class="l muted">No games played yet.</td></tr>'}</table></div>`;
+  return `<div class="tscroll"><table class="full"><tr><th class="l">Player</th>${fullHead(false)}</tr>
+  ${rows.map(p => { const s = p.stats[key]; return `<tr data-a="player" data-pid="${p.pid}"><td class="l">${esc(p.name.split(' ').slice(-1)[0])}</td>${fullCells(s)}</tr>`; }).join('') || '<tr><td colspan="19" class="l muted">No games played yet.</td></tr>'}</table></div>`;
 }
 function scheduleTab(L, tid) {
   const gs = L.schedule.filter(g => g.h === tid || g.a === tid);
@@ -532,18 +544,18 @@ function txSection(p) {
 }
 function gamesTab(p) {
   const L = S.L; const gl = p.stats?.glog;
-  if (gl?.length) return `<div class="muted small" style="padding:2px 14px">${p.stats.season - 1}-${String(p.stats.season).slice(2)} · ${gl.length} game(s)</div><div class="tscroll"><table><tr><th class="l">Game</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>FG</th><th>+/-</th></tr>${gl.slice().reverse().map(([gid, opp, home, win, min, pts, reb, ast, fgm, fga, pm, po]) =>
-    `<tr ${L.games[gid] ? `data-a="box" data-gid="${gid}"` : ''}><td class="l">${po ? '<span class="tag" style="background:var(--gold)">PO</span> ' : ''}${home ? 'vs' : '@'} ${T(opp).abbr} <span class="${win ? 'tg' : 'tr'}">${win ? 'W' : 'L'}</span></td><td>${min}</td><td><b>${pts}</b></td><td>${reb}</td><td>${ast}</td><td>${fgm}-${fga}</td><td>${pm > 0 ? '+' : ''}${pm}</td></tr>`).join('')}</table></div>`;
+  if (gl?.length) return `<div class="muted small" style="padding:2px 14px">${p.stats.season - 1}-${String(p.stats.season).slice(2)} · ${gl.length} game(s)</div><div class="tscroll"><table class="full"><tr><th class="l">Game</th>${fullHead(true)}<th>+/-</th></tr>${gl.slice().reverse().map(([gid, opp, home, win, min, pts, reb, ast, fgm, fga, pm, po, gs, tpm, tpa, ftm, fta, orb, drb, stl, blk, tov, pf]) =>
+    `<tr ${L.games[gid] ? `data-a="box" data-gid="${gid}"` : ''}><td class="l">${po ? '<span class="tag" style="background:var(--gold)">PO</span> ' : ''}${home ? 'vs' : '@'} ${T(opp).abbr} <span class="${win ? 'tg' : 'tr'}">${win ? 'W' : 'L'}</span></td>${fullCells({ gs, min, pts, reb, ast, fgm, fga, tpm, tpa, ftm, fta, orb, drb, stl, blk, tov, pf }, 1, { game: true })}<td>${pm > 0 ? '+' : ''}${pm}</td></tr>`).join('')}</table></div>`;
   const rows = [];
   for (const gid of Object.keys(L.games).reverse()) { const G = L.games[gid]; const l = G.box[p.tid]?.[p.pid] || G.box[G.h]?.[p.pid] || G.box[G.a]?.[p.pid]; if (l) rows.push({ G, l, gid }); if (rows.length >= 20) break; }
   if (!rows.length) return '<div class="card muted">No recent game logs. (Box scores are kept for recent games.)</div>';
-  return `<div class="tscroll"><table><tr><th class="l">Game</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>FG</th><th>+/-</th></tr>${rows.map(({ G, l, gid }) => { const home = G.box[G.h]?.[p.pid]; const opp = home ? G.a : G.h; const won = home ? G.hs > G.as : G.as > G.hs;
-    return `<tr data-a="box" data-gid="${gid}"><td class="l">${home ? 'vs' : '@'} ${T(opp).abbr} <span class="${won ? 'tg' : 'tr'}">${won ? 'W' : 'L'}</span></td><td>${l.min.toFixed(0)}</td><td><b>${l.pts}</b></td><td>${l.orb + l.drb}</td><td>${l.ast}</td><td>${l.fgm}-${l.fga}</td><td>${l.pm > 0 ? '+' : ''}${l.pm}</td></tr>`; }).join('')}</table></div>`;
+  return `<div class="tscroll"><table class="full"><tr><th class="l">Game</th>${fullHead(true)}<th>+/-</th></tr>${rows.map(({ G, l, gid }) => { const home = G.box[G.h]?.[p.pid]; const opp = home ? G.a : G.h; const won = home ? G.hs > G.as : G.as > G.hs;
+    return `<tr data-a="box" data-gid="${gid}"><td class="l">${home ? 'vs' : '@'} ${T(opp).abbr} <span class="${won ? 'tg' : 'tr'}">${won ? 'W' : 'L'}</span></td>${fullCells({ ...l, reb: undefined }, 1, { game: true })}<td>${l.pm > 0 ? '+' : ''}${l.pm}</td></tr>`; }).join('')}</table></div>`;
 }
 function careerTab(p, pot) {
   const L = S.L;
   const rows = p.career.map(c => ({ ...c }));
-  const s = p.stats.reg; if (s.gp) rows.push({ season: p.stats.season, abbr: L.teams[p.tid]?.abbr || 'FA', gp: s.gp, pts: s.pts, reb: rebOf(s), ast: s.ast, fgm: s.fgm, fga: s.fga, min: s.min, cur: true });
+  const s = p.stats.reg; if (s.gp) rows.push({ season: p.stats.season, abbr: L.teams[p.tid]?.abbr || 'FA', ...s, reb: rebOf(s), cur: true });
   const t = E.careerTotals(p);
   const pts = [...p.hist.map(h => ({ s: h.season, o: R(h.ovr) })), { s: L.season, o: R(p.ovr) }];
   const w = 320, h = 80, mn = Math.min(...pts.map(x => x.o)) - 3, mx = Math.max(R(pot), ...pts.map(x => x.o)) + 2;
@@ -551,7 +563,7 @@ function careerTab(p, pot) {
   const path = pts.map((x, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(x.o).toFixed(1)}`).join(' ');
   return `<div class="card"><h3>Rating history</h3><svg class="spark" viewBox="0 0 ${w} ${h}"><line x1="0" x2="${w}" y1="${Y(R(pot))}" y2="${Y(R(pot))}" stroke="var(--gold)" stroke-dasharray="4 4"/><path d="${path}" fill="none" stroke="var(--hdr)" stroke-width="3"/>${pts.map((x, i) => `<circle cx="${X(i)}" cy="${Y(x.o)}" r="3.5" fill="var(--hdr)"/><text x="${X(i)}" y="${Y(x.o) - 7}" font-size="10" text-anchor="middle" fill="var(--sub)">${x.o}</text>`).join('')}</svg>
   ${p.draft?.year ? `<div class="kv"><span>Draft</span><b>${p.draft.year}${p.draft.round ? ` · Rd ${p.draft.round}, #${p.draft.pick}${p.draft.tid != null && T(p.draft.tid) ? ' by ' + T(p.draft.tid).abbr : ''}` : p.draft.year > L.season ? ' (upcoming)' : ' · undrafted'}</b></div>` : ''}<div class="kv"><span>From</span><b>${esc(p.college || p.country)}</b></div></div>
-  <div class="tscroll"><table><tr><th>Yr</th><th>Tm</th><th>GP</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>FG%</th></tr>${rows.map(r => `<tr class="${r.cur ? 'hl' : ''}"><td>${r.season}</td><td>${r.abbr}</td><td>${r.gp}</td><td>${(r.min / r.gp).toFixed(1)}</td><td>${(r.pts / r.gp).toFixed(1)}</td><td>${(r.reb / r.gp).toFixed(1)}</td><td>${(r.ast / r.gp).toFixed(1)}</td><td>${r.fga ? (r.fgm / r.fga * 100).toFixed(1) : '-'}</td></tr>`).join('') || '<tr><td colspan="8" class="l muted">No NBA games yet.</td></tr>'}</table></div>
+  <div class="tscroll"><table class="full"><tr><th>Yr</th><th>Tm</th>${fullHead(false)}</tr>${rows.map(r => `<tr class="${r.cur ? 'hl' : ''}"><td>${r.season}</td><td>${r.abbr}</td>${fullCells(r)}</tr>`).join('') || '<tr><td colspan="20" class="l muted">No seasons yet.</td></tr>'}</table></div><div class="muted small" style="padding:2px 14px">Per-game averages · — = not recorded for that season (older saves)</div>
   <div class="muted" style="padding:6px 14px">In this league: ${t.gp} GP · ${t.pts} PTS · ${t.reb} REB · ${t.ast} AST${p.prior?.yrs ? ` · plus ~${p.prior.yrs} seasons before 1996-97` : ''}</div>`;
 }
 
