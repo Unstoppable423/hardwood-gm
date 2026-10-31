@@ -107,8 +107,11 @@ export function buildAttrs(target, pos, tilt) {
 }
 function heightTilt(hcm) { return (inches(hcm) - 79) / 3; }
 
+// well-known players' real primary positions, so height/stat inference can't mislabel stars
+export const POS_OVERRIDE = { 'Kobe Bryant': 'SG', 'Michael Jordan': 'SG', 'Scottie Pippen': 'SF', 'Reggie Miller': 'SG', 'Ray Allen': 'SG', 'Allen Iverson': 'PG', 'Grant Hill': 'SF', "Shaquille O'Neal": 'C', 'Tim Duncan': 'PF', 'Kevin Garnett': 'PF', 'Dirk Nowitzki': 'PF', 'Vince Carter': 'SG', 'Tracy McGrady': 'SF', 'Clyde Drexler': 'SG', 'Mitch Richmond': 'SG', 'Penny Hardaway': 'PG', 'Anfernee Hardaway': 'PG', 'Gary Payton': 'PG', 'John Stockton': 'PG', 'Jason Kidd': 'PG', 'Karl Malone': 'PF', 'Charles Barkley': 'PF', 'Dennis Rodman': 'PF', 'Hakeem Olajuwon': 'C', 'David Robinson': 'C', 'Patrick Ewing': 'C', 'Alonzo Mourning': 'C', 'Shawn Kemp': 'PF', 'Chris Webber': 'PF', 'Glen Rice': 'SF', 'Latrell Sprewell': 'SG', 'Paul Pierce': 'SF', 'Kevin Durant': 'SF', 'LeBron James': 'SF', 'Dwyane Wade': 'SG', 'Carmelo Anthony': 'SF', 'Yao Ming': 'C', 'Steve Nash': 'PG', 'Pau Gasol': 'PF', 'Tony Parker': 'PG', 'Manu Ginobili': 'SG' };
+const ovPos = (name, pos) => POS_OVERRIDE[name] || pos;
 export function playerFromStats(raw, season) {
-  const pos = /^(PG|SG|SF|PF|C)$/.test(raw.pos || '') ? raw.pos : posFrom(raw.h, raw.astp, raw.drb); // historic rows carry the listed position
+  const pos = ovPos(raw.n, /^(PG|SG|SF|PF|C)$/.test(raw.pos || '') ? raw.pos : posFrom(raw.h, raw.astp, raw.drb)); // historic rows carry the listed position
   const p = baseShell(raw.n, raw.age, raw.h, raw.w, pos, { college: raw.col, country: raw.ctry });
   const ht = heightTilt(raw.h);
   const zp = z(raw.pts, 7.5, 5.5), zu = z(raw.usg, 0.18, 0.045), zts = z(raw.ts, 0.51, 0.06), za = z(raw.astp, 0.13, 0.09);
@@ -164,7 +167,7 @@ export const histPotFromPeak = (peak) => clamp(40 + peak + Math.max(0, peak - 40
 export const START_FUTURE = { 'Kobe Bryant': 50, 'Kevin Garnett': 50, 'Steve Nash': 46, 'Allen Iverson': 46, 'Ray Allen': 42, 'Jermaine O\'Neal': 40, 'Ben Wallace': 38, 'Stephon Marbury': 40, 'Shareef Abdur-Rahim': 39, 'Antoine Walker': 37, 'Peja Stojakovic': 39, 'Rasheed Wallace': 39, 'Michael Finley': 37, 'Zydrunas Ilgauskas': 36 };
 
 export function prospectFromReal(raw, draftYear, opts = {}) {
-  const pos = /^(PG|SG|SF|PF|C)$/.test(raw.pos || '') ? raw.pos : posFrom(raw.h, null); // real listed position when the draft page has it
+  const pos = ovPos(raw.n, /^(PG|SG|SF|PF|C)$/.test(raw.pos || '') ? raw.pos : posFrom(raw.h, null)); // real listed position when the draft page has it
   const p = baseShell(raw.n, raw.age, raw.h, raw.w, pos, { college: raw.col, country: raw.ctry });
   const slot = raw.dp || 61;
   let base = raw.dr === 1 ? 61 - 0.33 * (slot - 1) : raw.dr === 2 ? 49 - 0.12 * (slot - 30) : 44;
@@ -368,7 +371,7 @@ export const FILE_KEYS = [...ATTRS, 'blk', 'stl', 'sco', 'sta', 'dur'];
 const POSS = ['PG', 'SG', 'SF', 'PF', 'C'];
 export function playerFromFile(rec, season) {
   const hcm = clamp(+rec.height || { PG: 188, SG: 196, SF: 201, PF: 206, C: 211 }[rec.pos] || 200, 160, 235);
-  const pos = POSS.includes(rec.pos) ? rec.pos : posFrom(hcm);
+  const pos = POSS.includes(rec.pos) ? rec.pos : ovPos(rec.name, posFrom(hcm));
   const age = clamp(Math.round(+rec.age || 25), 18, 45);
   const p = baseShell(String(rec.name).slice(0, 40), age, hcm, clamp(+rec.weight || Math.round((hcm - 100) * 1.05), 60, 180), pos, { college: rec.college || '', country: rec.country || 'USA' });
   const R = rec.ratings || {}, X = rec.exact || {}, inv0 = (d) => internalFor(clamp(Math.round(+d), 40, 99));

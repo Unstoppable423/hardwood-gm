@@ -31,7 +31,7 @@ function composites(p) {
 function emptyLine() { return { min: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, orb: 0, drb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, pm: 0, gs: 0 }; }
 
 // team-level hot/cold night (shooting form) so lopsided matchups aren't near-certain; tuned with scripts/realism.mjs
-export let FORM_SD = 0.05; export function setFormSd(v) { FORM_SD = v; }
+export let FORM_SD = 0.09; export function setFormSd(v) { FORM_SD = v; }
 export function autoRotation(players) {
   // starters: best at each slot-ish; minutes by OVR rank
   const avail = players.filter(p => !p.injury).sort((a, b) => b.ovr - a.ovr);
@@ -71,7 +71,7 @@ export function simGame(home, away, opts = {}) {
     const sx = t.scheme || NO_SCHEME; return { side, t, cs, starters, mins, line, on: [...starters], pts: 0, fouls: 0, qpts: [], coach: (t.coach ?? 60), tid: t.tid, ox: sx.ox, dx: sx.dx, offEdge: sx.offEdge || 0, defEdge: sx.defEdge || 0, form: normal(0, FORM_SD) };
   });
   const pbp = opts.pbp ? [] : null;
-  const homeAdv = opts.neutral ? 0 : (opts.homeAdv ?? 0.012); // playoff crowds are louder (stronger edge)
+  const homeAdv = opts.neutral ? 0 : (opts.homeAdv ?? 0.018); // playoff crowds are louder (stronger edge)
   let q = 1, clock = QLEN, elapsed = 0, poss = rand() < 0.5 ? 0 : 1, lastSub = -999;
   const injuries = [];
   const snapTeam = (tm) => { const o = { fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, reb: 0, ast: 0, tov: 0, stl: 0, blk: 0, pf: 0 }; const pl = [];

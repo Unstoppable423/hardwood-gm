@@ -78,6 +78,7 @@ export function interestWord(m) { return m >= 1.12 ? 'Eager' : m >= 1.0 ? 'Inter
 export function talks(L, p, kind) { const key = `${L.season}:${kind}`; if (p.talks?.key !== key) p.talks = { key, tries: 0, ended: false, last: null }; return p.talks; }
 export function negotiate(L, pid, kind, amt, years, raise = 0) {
   const p = getP(L, pid); const t = talks(L, p, kind);
+  if (L.settings?.morale === false && !L.settings?.cpuMoves) { t.ended = false; t.tries = 0; if (kind === "resign") p.willing = true; } // stable rosters: agent patience never runs out
   if (t.ended || (kind === 'resign' && !p.willing)) return { ok: false, error: `${p.name}'s agent: "We're not interested in further negotiations."`, agent: { ended: true, tries: t.tries, max: MAX_TRIES } };
   const r = kind === 'resign' ? resignOffer(L, pid, amt, years, raise) : kind === 'ext' ? extendContract(L, pid, amt, years) : userOffer(L, pid, amt, years, raise);
   if (r.ok) { p.talks = null; return r; }

@@ -23,8 +23,11 @@ export const FS_DEFAULTS = {
   maxContract: true,
   retirement: true,
   morale: true,                          // player morale and trade requests
+  cpuMoves: false,                       // with morale OFF: allow CPU-CPU trades and CPU free-agent poaching (off = stable rosters)
   careers: 'real',                       // real-life career arcs for real players: real | mostly | random
 };
+// morale off + cpuMoves off: players re-sign (user: at fair ask, no patience limit; CPU: always), no CPU-CPU trades or FA poaching
+export function stableRosters(L) { return L.settings?.morale === false && !L.settings?.cpuMoves; }
 export const FREQ = { 0.5: 'Low', 1: 'Normal', 2: 'High' };
 export const TRADE_MARGIN = { Easy: -0.05, Medium: 0.05, Hard: 0.15, Insane: 0.3 };
 export const SIM_EDGE = { Easy: 0.012, Normal: 0, Hard: -0.012, Insane: -0.024 };
@@ -63,7 +66,7 @@ export const FS_META = [
   ['tradeDeadline', 'Trade deadline', YN, 'Trades'],
   ['injuries', 'Injuries', [[0, 'Off'], [0.5, 'Low'], [1, 'Normal'], [1.6, 'High']], 'Players'],
   ['progression', 'Progression speed', [[0.5, 'Slow'], [0.75, 'Slower'], [1, 'Normal'], [1.25, 'Faster'], [1.5, 'Fast']], 'Players'],
-  ['morale', 'Morale & trade requests', YN, 'Players'],
+  ['morale', 'Morale & trade requests', YN, 'Players'], ['cpuMoves', 'CPU trades/free agency (when morale off)', YN, 'Players'],
   ['retirement', 'Retirements', YN, 'Players'],
   ['simDifficulty', 'Sim difficulty', [['Easy', 'Easy'], ['Normal', 'Normal'], ['Hard', 'Hard'], ['Insane', 'Insane']], 'League'],
   ['rosterMin', 'Roster minimum', [[8, '8'], [10, '10'], [12, '12'], [13, '13'], [14, '14']], 'League'],

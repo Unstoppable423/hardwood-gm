@@ -423,7 +423,7 @@ export function simDay(L, opts = {}) {
   }
   tickInjuries(L, tids);
   if (L.day >= L.allStarDay && !L.allStarDone) allStars(L);
-  if (L.settings.cpuTrades && L.day <= deadlineDay(L) && rand() < 0.04 * (L.settings.cpuTradeFreq || 1)) cpuTrade(L);
+  if (L.settings.cpuTrades && !(L.settings.morale === false && !L.settings.cpuMoves) && L.day <= deadlineDay(L) && rand() < 0.04 * (L.settings.cpuTradeFreq || 1)) cpuTrade(L);
   HOOKS.day?.(L);
   L.rng = getSeed();
   return userRes;

@@ -123,12 +123,14 @@ window.addEventListener('resize', () => fitCta());
 // Safari/in-app browsers: when a toolbar overlays the bottom of the layout viewport, lift the bar above it and pad the page by the same amount
 function fitVV() { const vv = window.visualViewport; const gap = vv && Math.abs((vv.scale || 1) - 1) < 0.01 ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0; document.documentElement.style.setProperty('--vvGap', (gap < 200 ? gap : 0) + 'px'); }
 window.visualViewport?.addEventListener('resize', fitVV); window.visualViewport?.addEventListener('scroll', fitVV); fitVV();
+const modalKey = () => `${S.modal?.type}:${S.modal?.pid ?? ''}:${S.modal?.kind ?? ''}`;
 function renderModal() {
   let m = $('#modal'); if (!S.modal) { m?.remove(); return; }
   if (!m) { m = document.createElement('div'); m.id = 'modal'; m.className = 'modal'; document.body.appendChild(m); }
   const sc = m.querySelector('.sheet')?.scrollTop || 0;
   m.innerHTML = `<div class="sheet">${modalView()}</div>`;
-  if (S.modal.keepScroll) m.querySelector('.sheet').scrollTop = sc;
+  if (S.modal.keepScroll || m.dataset.key === modalKey()) m.querySelector('.sheet').scrollTop = sc; // re-render of the same sheet keeps its scroll
+  m.dataset.key = modalKey();
 }
 function hdr(title, right = '', backable = S.stack.length > 0) {
   const unread = S.L ? S.L.inbox.filter(m => !m.read).length : 0;
@@ -483,6 +485,7 @@ PAGES.player = (pg0) => {
   else if (own && p.injury && E.canPlaceIL(L, p).ok) acts.push(`<button data-a="ilPlace" data-pid="${p.pid}">Move to Injured List</button>`);
   if (own && L.phase !== 'PLAYOFFS') acts.push(`<button class="red" data-a="release" data-pid="${p.pid}">Release</button>`);
   if (p.tid === -1) acts.push(`<button class="go" data-a="offerSheet" data-pid="${p.pid}" data-kind="fa">Offer Contract</button>`);
+  if (p.tid === -1 && !p.retired) acts.push(`<button data-a="signToSheet" data-pid="${p.pid}">Sign to team…</button>`);
   if (p.tid >= 0 && !own && L.phase !== 'PLAYOFFS') acts.push(`<button class="blue" data-a="tradeFor" data-pid="${p.pid}">Trade For</button>`);
   if (p.tid === -2 && L.phase === 'DRAFT' && L.draft.order[L.draft.idx] && E.draftControls(L, L.draft.order[L.draft.idx].tid) && p.draft?.year === L.season) acts.push(`<button class="go" data-a="draftPick" data-pid="${p.pid}">Draft</button>`);
   const editBtn = `<button class="rb" data-a="edit" data-pid="${p.pid}" aria-label="Edit player">${icon('pen', { s: 22 })}</button>`;
@@ -653,8 +656,9 @@ PAGES.fa = () => {
   const ctx = L.phase === 'REGULAR' ? 'inseason' : 'fa';
   const pr = E.payroll(L, L.userTid), c = E.cap(L);
   const poolBtn = E.faPoolOpen(L) ? `<button class="rb" data-a="goto" data-n="fapool" aria-label="Edit FA pool">${icon('pen', { s: 22 })}</button>` : '';
-  return { title: 'Free Agents', right: poolBtn, top: `<div class="caprow"><span>Cap Room <b class="${pr <= c ? 'tg' : 'tr'}">${pr <= c ? M(c - pr) : '−' + M(pr - c)}</b></span><span>Space <b>${E.activeCount(L, L.userTid).length}/${E.ROSTER_MAX}</b></span><span>${r ? `Week ${r}/3` : L.phase === 'REGULAR' ? 'In-season' : E.PHASE_LABEL[L.phase]}</span></div>` + pillSeg('faPos', ['All', ...E.POS].map(x => [x, x])),
+  return { title: 'Free Agents', right: poolBtn, top: `<div class="caprow"><span>Cap Room <b class="${pr <= c ? 'tg' : 'tr'}">${pr <= c ? M(c - pr) : '−' + M(pr - c)}</b></span><span>Space <b>${E.activeCount(L, L.userTid)}/${E.ROSTER_MAX}</b></span><span>${r ? `Week ${r}/3` : L.phase === 'REGULAR' ? 'In-season' : E.PHASE_LABEL[L.phase]}</span></div>` + pillSeg('faPos', ['All', ...E.POS].map(x => [x, x])),
     body: `<div class="muted" style="padding:2px 14px 6px">${r ? 'Offers are decided at the end of each week.' : L.phase === 'REGULAR' ? 'In-season free agents sign 1-year deals and decide right away.' : 'Free agents decide right away outside free agency weeks.'}</div>
+    ${L.phase !== 'REGULAR' && ps.some(p => p.formerTid >= 0) ? `<div style="padding:0 14px 8px"><button class="sm" style="width:100%" data-a="returnFAs">Return free agents to previous teams</button></div>` : ''}
     <div class="list">${ps.slice(0, 80).map(p => playerRow(p, { meta: `${p.pos} · Age ${p.age} · asks ${M(E.askingAmount(L, p, L.userTid, ctx, r || 3))}`, extra: (L.fa?.offers?.[p.pid] || []).some(o => o.tid === L.userTid) ? '<span class="tag" style="background:var(--q4)">OFFER</span>' : '' })).join('') || '<div class="it muted">No free agents.</div>'}</div>` };
 };
 
@@ -974,8 +978,12 @@ PAGES.fapool = () => {
 
 // ---------- MODALS ----------
 function sheetHead(title, sub = '') { return `<div class="sh"><div><div style="font-weight:800">${title}</div>${sub ? `<div style="font-size:12px;opacity:.85">${sub}</div>` : ''}</div><button class="x sm" data-a="close" aria-label="Close">${icon('close', { s: 18 })}</button></div>`; }
-function modalView() { return ({ offer: offerModal, holiday: holidayModal, cut: cutModal }[S.modal.type] || (() => ''))(); }
+function modalView() { return ({ signTo: signToModal, offer: offerModal, holiday: holidayModal, cut: cutModal }[S.modal.type] || (() => ''))(); }
 const structOK = (L, kind) => kind !== 'ext' && !(L.phase === 'REGULAR' && kind === 'fa');
+function signToModal() {
+  const L = S.L, p = E.getP(L, S.modal.pid); const amt = E.fairContract(L, p);
+  return sheetHead(`Sign ${esc(p.name)} to…`, `Commissioner signing · ${M(amt)}/yr · ${E.prefYears(p, L)} yrs · ignores interest and cap`) + `<div class="wrap"><div class="list">${L.teams.filter(t => !t.inactive).map(t => `<button class="it" style="width:100%;text-align:left" data-a="signToTeam" data-tid="${t.tid}">${esc(t.city + ' ' + t.name)}${t.tid === p.formerTid ? ' <span class="tag">previous team</span>' : ''} <span class="muted">${E.activeCount(L, t.tid)}/${E.ROSTER_MAX}</span></button>`).join('')}</div></div>`;
+}
 function offerModal() {
   const L = S.L, p = E.getP(L, S.modal.pid); const kind = S.modal.kind;
   const ask = kind === 'resign' ? p.resignAsk : kind === 'ext' ? E.extensionAsk(L, p) : E.askingAmount(L, p, L.userTid, L.phase === 'REGULAR' ? 'inseason' : 'fa', E.faRound(L) || 3);
@@ -986,7 +994,7 @@ function offerModal() {
   <div class="kv"><span>Asking</span><b>~${M(ask)}/yr${kind === 'ext' ? '' : ` · ${E.prefYears(p, L)} yrs`}</b></div>${(() => { const m = E.moodToward(L, p, L.userTid), w = E.interestWord(m), t = kind === 'fa' && E.faRound(L) ? null : E.talks(L, p, kind);
     return `<div class="kv"><span>Interest in your team</span><b class="${m >= 1 ? 'tg' : m >= 0.9 ? '' : 'tr'}">${w}</b></div><div class="bar"><i style="width:${Math.round(clampN((m - 0.7) / 0.6, 0, 1) * 100)}%;background:${m >= 1 ? 'var(--q4)' : m >= 0.9 ? 'var(--gold)' : 'var(--q1)'}"></i></div>
     ${t ? `<div class="kv"><span>Agent patience</span><b class="pat">${[...Array(E.MAX_TRIES)].map((_, i) => `<i class="${i < E.MAX_TRIES - t.tries ? 'on' : ''}"></i>`).join('')}</b></div>` : ''}
-    ${t?.last || t?.ended ? `<div class="agent ${t.ended ? 'end' : ''}"><div class="who">${esc(p.name.split(' ').slice(-1)[0])}'s agent</div>${esc(t.ended && !t.last ? "We're not interested in further negotiations." : t.last.text)}${t.last && !t.ended ? `<button class="sm go" data-a="offUseCounter">Use ${M(t.last.need)} · ${t.last.years}y</button>` : ''}</div>` : ''}`; })()}
+    ${t?.last || t?.ended ? `<div class="agent ${t.ended ? 'end' : ''}"><div class="who">${esc(p.name.split(' ').slice(-1)[0])}'s agent</div>${esc(t.ended && !t.last ? "We're not interested in further negotiations." : t.last.text)}${t.last && !t.ended ? `<button type="button" class="sm go" data-a="offUseCounter">Use ${M(t.last.need)} · ${t.last.years}y</button>` : ''}</div>` : ''}`; })()}
   <div class="muted">Average salary per year: <b>${M(amt)}</b></div><input type="range" min="${E.minSalary(L.season)}" max="${Math.max(E.maxSalary(L.season, p), ask * 1.3)}" step="10" value="${amt}" data-a="offAmt">
   <div class="muted">${kind === 'ext' ? 'Extra years' : 'Years'}: <b>${yrs}</b></div><div class="stepper"><button data-a="offYrs" data-d="-1">−</button><b>${yrs}</b><button data-a="offYrs" data-d="1">+</button><span class="muted">max ${maxY}</span></div>
   ${structOK(L, kind) ? (() => { const rc = E.raiseCap(L.season, kind === 'resign'), r = S.modal.raise || 0, y1 = E.yearOneFor(amt, yrs, r), yN = y1 * (1 + r * (yrs - 1));
@@ -1184,11 +1192,17 @@ const A = {
   convince(d) { const ok = E.convinceRetire(S.L, +d.pid); toast(ok ? 'He agreed to play another season!' : 'His mind is made up — he will retire.'); autosave(); render(); },
   offerSheet(d) { S.modal = { type: 'offer', pid: +d.pid, kind: d.kind }; renderModal(); },
   offRaise(d) { S.modal.raise = +d.v; renderModal(); },
+  signToSheet(d) { S.modal = { type: 'signTo', pid: +d.pid }; renderModal(); },
+  signToTeam(d) { const L = S.L, p = E.getP(L, S.modal.pid); const tid = +d.tid; if (E.activeCount(L, tid) >= E.ROSTER_MAX && !confirm(`${L.teams[tid].abbr} already has ${E.ROSTER_MAX} active players. Sign anyway?`)) return;
+    E.commissionerSign(L, p, tid); S.modal = null; renderModal(); toast(`${p.name} signed with ${L.teams[tid].abbr}`); autosave(); render(); },
+  returnFAs() { const L = S.L; if (!confirm('Re-sign every free agent who played for a team last season back to that team at a fair contract?')) return;
+    const mine = E.freeAgents(L).filter(p => p.formerTid === L.userTid).length; const inc = mine > 0 && confirm(`Also bring back ${mine} of your own former players to your team?`);
+    const r = E.returnFreeAgents(L, { includeUser: inc }); E.aiRosterFix(L); toast(`${r.length} free agents returned to their teams`); autosave(); render(); },
   offMin() { S.modal.amt = E.minSalary(S.L.season); renderModal(); },
   offAsk() { const L = S.L, p = E.getP(L, S.modal.pid); S.modal.amt = curAsk(L, p, S.modal.kind); renderModal(); },
   offYrs(d) { const L = S.L, p = E.getP(L, S.modal.pid), k = S.modal.kind; const maxY = k === 'ext' ? E.maxYears(L, true) - 1 : L.phase === 'REGULAR' && k === 'fa' ? 1 : E.maxYears(L, k === 'resign');
     S.modal.yrs = Math.max(1, Math.min(maxY, (S.modal.yrs ?? (k === 'ext' ? 3 : E.prefYears(p, L))) + +d.d)); renderModal(); },
-  offUseCounter() { const L = S.L, p = E.getP(L, S.modal.pid); const t = E.talks(L, p, S.modal.kind); if (t.last) { S.modal.amt = t.last.need; S.modal.yrs = t.last.years; } renderModal(); },
+  offUseCounter() { const L = S.L, p = E.getP(L, S.modal.pid); const t = E.talks(L, p, S.modal.kind); if (t.last) { S.modal.amt = t.last.need; S.modal.yrs = t.last.years; toast(`Offer set to ${M(t.last.need)} · ${t.last.years}y`); } S.modal.keepScroll = true; renderModal(); },
   submitOffer() {
     const L = S.L, m = S.modal, p = E.getP(L, m.pid);
     const amt = m.amt ?? curAsk(L, p, m.kind); const yrs = m.yrs ?? (m.kind === 'ext' ? 3 : E.prefYears(p, L));

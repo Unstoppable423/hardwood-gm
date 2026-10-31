@@ -5,7 +5,7 @@ import { applyHistory, lotteryRule } from './history.js';
 import { ERA, gpReq } from './era.js';
 import { managedSet, homeTid } from './control.js';
 import { applyArc, careerMode, realTeamTid, arcYearsFrom, applyPeakNow, DEFAULT_PEAKS } from './careers.js';
-import { taxActive, taxLine, applyRules } from './franchise.js';
+import { taxActive, taxLine, applyRules, stableRosters } from './franchise.js';
 import { capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, LOTTERY_WEIGHTS, PHASES } from './constants.js';
 import { marketValue, progress, anchorRatings, attrTops, anchorAttrTails, longevity, devTrait, generateVeteran, generateProspect, prospectFromReal, dispRating, ovrFromAttrs } from './players.js';
 import { HOOKS, teamPlayers, getP, reindex, payroll, cap, msg, msgBatch, news, diff, teamName, teamOvr, standings, confSeeds, makeSchedule,
@@ -178,6 +178,7 @@ export function moodToward(L, p, tid) {
   return m;
 }
 export function willingToNegotiate(L, p, tid) {
+  if (stableRosters(L)) return true;
   const m = moodToward(L, p, tid);
   return m > 0.82 || p.traits.personality === 'Mercenary';
 }
@@ -189,7 +190,7 @@ export function prefYears(p, L) { if (L && L.phase === 'REGULAR') return 1; retu
 function prefYear0(p) { return p.age <= 24 ? 4 : p.age <= 28 ? 4 : p.age <= 31 ? 3 : p.age <= 33 ? 2 : 1; }
 export function offerAcceptable(L, p, tid, amt, years, ask) {
   const yrPenalty = 1 + 0.04 * Math.abs(years - prefYears(p, L));
-  return amt * moodToward(L, p, tid) >= ask * yrPenalty * 0.98;
+  return amt * (stableRosters(L) ? 1 : moodToward(L, p, tid)) >= ask * yrPenalty * 0.98;
 }
 
 // ================= awards & season review =================
@@ -520,7 +521,12 @@ function aiPickValue(L, p, tid) {
   const sc = staffEffects(L, tid).scout;
   const potEst = p.pot + ((Math.sin(p.pid * 7.1 + tid) * 43758.5) % 1) * (100 - sc) / 5;
   const need = teamPlayers(L, tid).filter(x => x.pos === p.pos && x.ovr >= 65).length;
-  return p.ovr * 0.45 + potEst * 0.55 - need * 0.8 + (p.projPick ? (61 - p.projPick) * 0.04 : 0);
+  const jit = (((Math.sin(p.pid * 12.9898 + tid * 78.233) * 43758.5453) % 1 + 1) % 1 - 0.5) * 3; // mild per-team noise
+  const base = p.ovr * 0.45 + potEst * 0.55 - need * 0.8 + jit;
+  // real classes: consensus/real draft slot dominates at the top (log scale), ratings still matter further down
+  if (p.real || p.projPick) return base * 0.5 + 42 - 14 * Math.log(Math.min(p.projPick || 75, 75));
+  if (L.settings.draftClasses === 'real') return base * 0.5 + 42 - 14 * Math.log(32); // filler prospects in a real class: late-1st value
+  return base;
 }
 export function draftPlayer(L, pid) {
   const D = L.draft; const slot = D.order[D.idx]; if (!slot) return { ok: false, error: 'Draft over' };
@@ -566,6 +572,7 @@ function leaveDraft(L) {
 // ================= re-sign =================
 function cpuResign(L, p) {
   const val = marketValue(p, L.season); const keep = p.ovr >= 60 + (p.age >= 32 ? 6 : 0) && payroll(L, p.tid) - p.contract.amt + val < capFor(L.season) * 1.6 && rand() < 0.75;
+  if (stableRosters(L)) { const yrs = prefYears(p); p.contract = { amt: Math.round(val / 10) * 10, exp: L.season + yrs - 1, signed: L.season }; return; }
   if (keep && willingToNegotiate(L, p, p.tid)) { const yrs = prefYears(p); p.contract = { amt: Math.round(val * (0.95 + rand() * 0.15) / 10) * 10, exp: L.season + yrs - 1, signed: L.season }; }
   else { p.formerTid = p.tid; p.tid = -1; p.contract = null; }
 }
@@ -638,6 +645,7 @@ export function aiFAOffers(L, round) {
     for (const p of fas) {
       if (made >= tries) break;
       if (L.fa.offers[p.pid]?.some(o => o.tid === t.tid)) continue;
+      if (stableRosters(L) && p.formerTid >= 0 && p.formerTid !== t.tid) continue; // no poaching other teams' players
       const ask = askingAmount(L, p, t.tid, 'fa', round);
       const amt = Math.round(ask * (0.95 + rand() * 0.15) / 10) * 10;
       const aff = canAfford(L, t.tid, amt, { bird: p.birdRights && p.formerTid === t.tid });
@@ -747,4 +755,20 @@ export function applyStart(L, start) {
     msg(L, 'League Office', 'Welcome to the 1996 Draft', 'Your league starts on draft night 1996: Iverson, Camby, Abdur-Rahim, Marbury, Ray Allen, Kobe Bryant, Steve Nash and more are on the board. Pick order follows who held each pick after draft-day trades.');
   }
   reindex(L);
+}
+export function fairContract(L, p) { return Math.round(clamp(marketValue(p, L.season), minSalary(L.season), maxSalary(L.season, p)) / 10) * 10; }
+// commissioner-style signing: any FA to any team at a fair deal, ignoring interest and the cap
+export function commissionerSign(L, p, tid) { L.fa ||= { offers: {}, round: 0 }; L.fa.offers ||= {}; delete L.fa.offers[p.pid]; sign(L, p, tid, fairContract(L, p), prefYears(p, L)); return p; }
+// Undo free-agent departures: every FA who played for a team last season goes back there on a fair deal.
+// includeUser: also players whose previous team is the user's (needs the user's confirmation in the UI).
+export function returnFreeAgents(L, { includeUser = false } = {}) {
+  const out = []; L.fa ||= { offers: {}, round: 0 }; L.fa.offers ||= {};
+  for (const p of freeAgents(L)) {
+    const t = L.teams[p.formerTid]; if (!t || t.inactive || p.formerTid < 0) continue;
+    const recent = (p.career?.at(-1)?.season ?? 0) >= L.season - 1 || p.stats?.tid === p.formerTid; if (!recent) continue;
+    if (!includeUser && managedSet(L).has(p.formerTid)) continue;
+    commissionerSign(L, p, p.formerTid); out.push(p);
+  }
+  if (out.length) news(L, `${out.length} free agents returned to their previous teams.`, 'fa');
+  return out;
 }
