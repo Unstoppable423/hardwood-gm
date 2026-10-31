@@ -12,7 +12,7 @@ import { careerMode, arcPot, applyPeakNow } from './careers.js';
 import { START_FUTURE, histPotFromPeak, attrTops, playerFromStats, finalizeStartRatings, prospectFromReal, generateProspect, generateVeteran, devTrait, marketValue,
   setNextPid, getNextPid, POS_OVERRIDE, REAL_STARTERS, POS_ELIG, eligiblePos, genName, ovrFromAttrs } from './players.js';
 import { simGame, autoRotation } from './sim.js';
-import { startPreseason } from './offseason.js';
+import { startPreseason, cpuUpgrade } from './offseason.js';
 
 export const VERSION = 1;
 // ---------- helpers ----------
@@ -452,6 +452,7 @@ export function simDay(L, opts = {}) {
   tickInjuries(L, tids);
   if (L.day >= L.allStarDay && !L.allStarDone) allStars(L);
   if (L.settings.cpuTrades && !(L.settings.morale === false && !L.settings.cpuMoves) && L.day <= deadlineDay(L) && rand() < 0.04 * (L.settings.cpuTradeFreq || 1)) cpuTrade(L);
+  if (L.day % 20 === 10 && L.day <= deadlineDay(L) + 30) cpuUpgrade(L, 1); // periodic, max 1 per team
   HOOKS.day?.(L);
   L.rng = getSeed();
   return userRes;
