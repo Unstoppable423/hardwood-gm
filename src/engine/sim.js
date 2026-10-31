@@ -57,7 +57,7 @@ export function autoRotation(players) {
   order.forEach((p, i) => { minutes[p.pid] = MIN[i] ?? 0; tot += minutes[p.pid]; });
   // normalize to 240
   const scale = tot > 0 ? 240 / tot : 1; for (const k in minutes) minutes[k] = Math.round(minutes[k] * scale);
-  return { starters: starters.map(p => p.pid), minutes };
+  return { starters: starters.map(p => p.pid), minutes, slots: Object.fromEntries(Object.entries(bySlot).map(([k, p]) => [k, p.pid])) };
 }
 
 export function simGame(home, away, opts = {}) {

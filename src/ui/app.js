@@ -706,7 +706,7 @@ function teamNeeds(L, tid) {
 function prospectRow(p, rank, onClock) {
   const sl = (S.L.shortlist || []).includes(p.pid);
   return `<div class="it" data-a="player" data-pid="${p.pid}"><b style="width:24px" class="muted">${rank}</b>${avatar(p, 38)}
-  <div class="grow"><div class="nm">${sl ? starSvg('full', 14) + ' ' : ''}${esc(p.name)}</div><div class="meta">${p.pos} · ${E.ageNow(S.L, p)}y · ${ht(p.h)} · ${esc(p.college || p.country)}</div><div class="meta">RD ${projRound(rank - 1)} PROJ · ${stars(potOf(p))}</div></div>
+  <div class="grow"><div class="nm">${sl ? starSvg('full', 14) + ' ' : ''}${esc(p.name)}</div><div class="meta">${p.pos} · ${E.ageNow(S.L, p)}y · ${ht(p.h)} · ${esc(p.college || p.country)}</div><div class="meta">RD ${projRound(rank - 1)} PROJ · ${stars(potOf(p))}${S.L.phase === 'DRAFT' && S.needTid != null && E.fillsNeed(S.L, p, S.needTid) ? ' <span class="tag needtag">Fills need</span>' : ''}</div></div>
   ${onClock ? `<button class="sm go" data-a="draftPick" data-pid="${p.pid}">Draft</button>` : ''}<div class="rt">${hideR(p) ? sq(null) : sq(p.ovr)}</div></div>`;
 }
 // ---------- fantasy draft room (PGM2 draft-room style) ----------
@@ -739,11 +739,13 @@ PAGES.draft = () => {
   let all = scoutRank(E.prospects(L)); let ps = all;
   if (S.draftPos !== 'All') ps = ps.filter(p => p.pos === S.draftPos);
   if (S.shortOnly) ps = ps.filter(p => (L.shortlist || []).includes(p.pid));
+  if (S.needsOnly && slot) ps = ps.filter(p => E.fillsNeed(L, p, slot.tid));
+  S.needTid = slot?.tid;
   const lastP = D.log.at(-1); const tb = curTab('draft', 'avail');
   const lp = lastP ? E.getP(L, lastP.pid) : null;
   let top = `${lastP ? `<div class="lastpick">${lp ? avatar(lp, 52) : disc(lastP.tid, 44)}<div class="grow"><div class="lp-k">LAST PICK · RD ${lastP.round} #${lastP.pick}</div><div class="lp-v">${esc(lastP.name)}</div><div class="muted">${lp ? `Age ${lp.age} · ` : ''}${lastP.pos}${lp ? ' · ' + esc(lp.college || lp.country) : ''}</div></div>${lp && !hideR(lp) ? sq(lp.ovr) : ''}<span class="lp-to">→</span>${disc(lastP.tid, 36)}</div>` : ''}
-   ${slot ? `<div class="clock"><span>DRAFT RD ${slot.round} PICK ${slot.pick}</span><span>${onClock ? (slot.tid === L.userTid ? 'YOU ARE ON THE CLOCK' : 'YOU PICK FOR ' + esc(T(slot.tid).abbr)) : esc(T(slot.tid).abbr) + ' ON THE CLOCK'}</span></div>
-   <div class="ribbon">${D.order.slice(D.idx, D.idx + 12).map((o, i) => `<div class="${i === 0 ? 'on' : ''} ${o.tid === L.userTid ? 'me' : ''}">${disc(o.tid, 30)}<small>${o.pick}</small></div>`).join('')}</div>` : `<div class="clock"><span>DRAFT COMPLETE</span><span></span></div>`}` +
+   ${slot ? `<div class="clock" data-a="draftTeam" data-tid="${slot.tid}"><span>DRAFT RD ${slot.round} PICK ${slot.pick}</span><span>${onClock ? (slot.tid === L.userTid ? 'YOU ARE ON THE CLOCK' : 'YOU PICK FOR ' + esc(T(slot.tid).abbr)) : esc(T(slot.tid).abbr) + ' ON THE CLOCK'}</span></div>
+   <div class="ribbon">${D.order.slice(D.idx, D.idx + 12).map((o, i) => `<div class="${i === 0 ? 'on' : ''} ${o.tid === L.userTid ? 'me' : ''}" data-a="draftTeam" data-tid="${o.tid}" role="button" aria-label="${esc(T(o.tid).name)} roster">${disc(o.tid, 30)}<small>${o.pick}</small></div>`).join('')}</div>` : `<div class="clock"><span>DRAFT COMPLETE</span><span></span></div>`}` +
     tabs('draft', [['avail', 'Available'], ['upcoming', 'Upcoming Picks'], ['picked', 'Picked']], 'avail');
   let body = '';
   if (tb === 'avail') {
@@ -752,11 +754,12 @@ PAGES.draft = () => {
       if (offs.length) body += `<div class="sect">Offers for your pick</div>${offs.map((o, i) => `<div class="card"><div class="row">${disc(o.tidB, 34)}<div class="grow" style="font-size:13px">${esc(T(o.tidB).name)} offer ${o.bPicks.map(id => { const k = L.picks.find(z => z.id === id); return `${k.season} Rd ${k.round} (${T(k.orig).abbr})`; }).join(' + ')}</div><button class="sm go" data-a="clockAccept" data-i="${i}">Accept</button></div></div>`).join('')}`; }
     if (!D.modeChosen && D.idx === 0) body = `<div class="card" style="border:2px solid var(--gold)"><b>The draft is starting — pick #1 is on the clock.</b><div class="muted small" style="margin:4px 0 8px">Choose how to run it (you can change this any time with the toggle below).</div><div class="grid2"><button class="${L.settings.draftAll ? 'go' : ''}" data-a="draftMode" data-v="all">Control all picks</button><button class="${!L.settings.draftAll ? 'go' : ''}" data-a="draftMode" data-v="mine">Just my picks</button></div></div>` + body;
     body = `<div class="row" style="padding:6px 10px"><div class="grow small muted">${L.settings.draftAll ? 'You choose every pick, for every team.' : 'You choose your own picks only.'}</div><button class="sm ${L.settings.draftAll ? 'go' : 'ghost'}" data-a="draftAllTog">Control all picks: ${L.settings.draftAll ? 'ON' : 'OFF'}</button></div>` + body;
-    if (slot && onClock && slot.tid !== L.userTid) body = `<div class="card" style="padding:8px 12px"><b>On the clock: ${esc(T(slot.tid).city + ' ' + T(slot.tid).name)}</b> · pick #${slot.pick}. Tap a prospect to choose for them.</div>` + body;
+    if (slot && onClock && slot.tid !== L.userTid) body = `<div class="card" style="padding:8px 12px"><b class="plink" data-a="draftTeam" data-tid="${slot.tid}">On the clock: ${esc(T(slot.tid).city + ' ' + T(slot.tid).name)}</b> · pick #${slot.pick}. Tap a prospect to choose for them.</div>` + body;
+    if (slot) body += `<div class="card" style="padding:8px 12px"><div class="row"><div class="grow small"><b class="plink" data-a="draftTeam" data-tid="${slot.tid}">${esc(T(slot.tid).abbr)} needs: ${E.topNeeds(L, slot.tid).join(', ')}</b> <span class="muted">· tap for roster</span></div><button class="sm ghost" data-a="tradePick" data-id="${slot.id}">${slot.tid === L.userTid ? 'Trade this pick' : 'Trade for pick'}</button></div></div>`;
     if (best) body += `<div class="sect">Best player available</div><div class="list">${prospectRow(best, 1, onClock)}</div>`;
-    body += `<div class="row" style="padding:4px 10px">${pillSeg('draftPos', ['All', ...E.POS].map(x => [x, x])).replace('class="pill-seg"', 'class="pill-seg" style="flex:1;margin:0"')}<button class="sm ${S.shortOnly ? 'blue' : 'ghost'}" data-a="shortOnly" aria-label="Shortlist only">${starSvg('full', 16)}</button></div>
+    body += `<div class="row" style="padding:4px 10px">${pillSeg('draftPos', ['All', ...E.POS].map(x => [x, x])).replace('class="pill-seg"', 'class="pill-seg" style="flex:1;margin:0"')}<button class="sm ${S.shortOnly ? 'blue' : 'ghost'}" data-a="shortOnly" aria-label="Shortlist only">${starSvg('full', 16)}</button><button class="sm ${S.needsOnly ? 'blue' : 'ghost'}" data-a="needsOnly" aria-label="Needs only">Needs</button></div>
     <div class="list">${ps.slice(0, 70).map(p => prospectRow(p, all.indexOf(p) + 1, onClock)).join('') || '<div class="it muted">Nobody here.</div>'}</div>`;
-  } else if (tb === 'upcoming') body = `<div class="list">${D.order.slice(D.idx, D.idx + 30).map(o => `<div class="it ${o.tid === L.userTid ? 'hl' : ''}"><b style="width:30px">${o.pick}</b>${disc(o.tid, 30)}<div class="grow"><div class="nm">${esc(T(o.tid).name)}</div><div class="meta">Rd ${o.round} · needs ${teamNeeds(L, o.tid).join(', ')}</div></div></div>`).join('')}</div>`;
+  } else if (tb === 'upcoming') body = `<div class="list">${D.order.slice(D.idx, D.idx + 30).map(o => `<div class="it ${o.tid === L.userTid ? 'hl' : ''}"><b style="width:30px">${o.pick}</b><span data-a="draftTeam" data-tid="${o.tid}">${disc(o.tid, 30)}</span><div class="grow" data-a="draftTeam" data-tid="${o.tid}"><div class="nm">${esc(T(o.tid).name)}</div><div class="meta">Rd ${o.round} · needs ${E.topNeeds(L, o.tid).join(', ')}</div></div><button class="sm ghost" data-a="tradePick" data-id="${o.id}">${o.tid === L.userTid ? 'Trade' : 'Get'}</button></div>`).join('')}</div>`;
   else body = `<div class="list">${D.log.slice().reverse().map(d => `<div class="it" data-a="player" data-pid="${d.pid}"><b style="width:30px">${d.pick}</b>${disc(d.tid, 30)}<div class="grow"><div class="nm">${esc(d.name)}</div><div class="meta">${d.pos} · Rd ${d.round}</div></div></div>`).join('') || '<div class="it muted">No picks yet.</div>'}</div>`;
   const cta = slot ? (onClock ? `<button class="go" data-a="draftPick" data-pid="${all[0]?.pid}">Draft ${esc(all[0]?.name.split(' ').slice(-1)[0] || '')}</button><button class="blue" data-a="draftAutoOne">Auto-pick this pick</button>` : `<button class="blue" data-a="draftNext">Next Pick</button>`) + `<button class="go" style="flex:.8" data-a="draftToMe">${nextCtl >= 0 || !onClock ? 'Auto to my next' : 'Sim rest'}</button><button class="ghost" style="flex:.5" data-a="draftAuto" aria-label="Sim rest of draft">Sim rest</button>` : `<button class="go" data-a="advance">Re-sign Players</button>`;
   return { title: 'Draft', top, body, cta };
@@ -768,7 +771,7 @@ function draftBoard(L) { // pre-draft scouting board (any phase)
   const mine = L.picks.filter(k => k.tid === L.userTid && k.season === year);
   return { title: 'Draft', top: `<div class="clock"><span>${year} DRAFT CLASS</span><span>${mine.length ? 'YOUR PICKS: ' + mine.map(k => 'RD ' + k.round).join(', ') : 'NO PICKS'}</span></div>`,
     body: `<div class="muted" style="padding:6px 14px">Head scout accuracy ${scoutAcc()}/100. Star ratings are scouted potential — busts and late bloomers happen. Tap the star on a player to shortlist him.</div>
-    <div class="row" style="padding:4px 10px">${pillSeg('draftPos', ['All', ...E.POS].map(x => [x, x])).replace('class="pill-seg"', 'class="pill-seg" style="flex:1;margin:0"')}<button class="sm ${S.shortOnly ? 'blue' : 'ghost'}" data-a="shortOnly" aria-label="Shortlist only">${starSvg('full', 16)}</button></div>
+    <div class="row" style="padding:4px 10px">${pillSeg('draftPos', ['All', ...E.POS].map(x => [x, x])).replace('class="pill-seg"', 'class="pill-seg" style="flex:1;margin:0"')}<button class="sm ${S.shortOnly ? 'blue' : 'ghost'}" data-a="shortOnly" aria-label="Shortlist only">${starSvg('full', 16)}</button><button class="sm ${S.needsOnly ? 'blue' : 'ghost'}" data-a="needsOnly" aria-label="Needs only">Needs</button></div>
     <div class="list">${ps.slice(0, 70).map(p => prospectRow(p, all.indexOf(p) + 1, false)).join('') || '<div class="it muted">Nobody here.</div>'}</div>` };
 }
 
@@ -1027,7 +1030,22 @@ PAGES.fapool = () => {
 const expYr = (L, p) => p.draft?.year ? L.season - p.draft.year : (p.prior?.yrs || 0) + (p.career?.length || 0) + 1;
 // ---------- MODALS ----------
 function sheetHead(title, sub = '') { return `<div class="sh"><div><div style="font-weight:800">${title}</div>${sub ? `<div style="font-size:12px;opacity:.85">${sub}</div>` : ''}</div><button class="x sm" data-a="close" aria-label="Close">${icon('close', { s: 18 })}</button></div>`; }
-function modalView() { return ({ offers: offersModal, signTo: signToModal, offer: offerModal, holiday: holidayModal, cut: cutModal }[S.modal.type] || (() => ''))(); }
+function draftTeamModal() {
+  const L = S.L, tid = S.modal.tid, t = T(tid); const ps = E.teamPlayers(L, tid);
+  const rot = E.autoRotation(ps); const sl = rot.slots || {}; const SL = ['PG', 'SG', 'SF', 'PF', 'C'];
+  const starters = SL.map(k => [k, E.getP(L, sl[k])]).filter(x => x[1]); const sIds = new Set(starters.map(x => x[1].pid));
+  const bench = ps.filter(p => !sIds.has(p.pid)).sort((a, b) => b.ovr - a.ovr);
+  const row = (p, slot) => `<div class="it" data-a="player" data-pid="${p.pid}">${slot ? `<b style="width:28px" class="muted">${slot}</b>` : ''}${avatar(p, 32)}<div class="grow"><div class="nm">${esc(p.name)}</div><div class="meta">${E.posLabel ? E.posLabel(p) : p.pos} · Age ${p.age} · ${p.contract ? yrsLeft(p) + 'y left' : 'no contract'}</div></div>${sq(p.ovr)}</div>`;
+  const needs = E.teamNeedsDetail(L, tid);
+  const myPicks = L.draft ? L.draft.order.slice(L.draft.idx).filter(o => o.tid === tid) : [];
+  return sheetHead(`${esc(t.city)} ${esc(t.name)}`, `${ps.length} players${myPicks.length ? ' · picks ' + myPicks.map(o => '#' + o.pick).join(', ') : ''}`) + `<div class="wrap">
+  <div class="sect">Team needs</div><div class="card">${needs.map((n, i) => `<div class="kv"><span>${i < 2 ? '<span class="tag" style="background:var(--gold)">NEED</span> ' : ''}<b>${n.pos}</b> <small class="muted">${n.starter ? esc(n.starter.name.split(' ').slice(-1)[0]) + ' ' + n.starter.ovr : '—'} · ${n.depth} eligible${n.notes.length ? ' · ' + n.notes.join(', ') : ''}</small></span><b>${n.score}</b></div>`).join('')}<div class="muted small">Higher = bigger need (starter + depth at each spot, secondary positions count; aging/expiring starters add need).</div></div>
+  <div class="sect">Starting five</div><div class="list">${starters.map(([k, p]) => row(p, k)).join('') || '<div class="it muted">No players.</div>'}</div>
+  <div class="sect">Bench</div><div class="list">${bench.map(p => row(p)).join('') || '<div class="it muted">No bench.</div>'}</div>
+  ${tid !== L.userTid && myPicks.length ? `<div class="grid2" style="margin:10px 0">${myPicks.slice(0, 2).map(o => `<button class="blue" data-a="tradePick" data-id="${o.id}">Trade for pick #${o.pick}</button>`).join('')}</div>` : ''}
+  <button class="go" style="width:100%;margin:8px 0 16px" data-a="close">Back to draft</button></div>`;
+}
+function modalView() { return ({ offers: offersModal, signTo: signToModal, offer: offerModal, holiday: holidayModal, cut: cutModal, draftTeam: draftTeamModal }[S.modal.type] || (() => ''))(); }
 const structOK = (L, kind) => kind !== 'ext' && !(L.phase === 'REGULAR' && kind === 'fa');
 function offersModal() {
   const L = S.L, p = E.getP(L, S.modal.pid); const list = (L.tradeOffers || []).filter(x => S.modal.ids.includes(x.id));
@@ -1185,7 +1203,12 @@ const A = {
   fpCreate() { const v = (id) => document.getElementById(id)?.value; const r = E.faCreate(S.L, { name: (v('fpName') || '').trim() || undefined, pos: v('fpPos'), age: +v('fpAge'), ovr: +v('fpOvr') });
     if (!r.ok) return toast(r.error); autosave(); S.ed = null; go('editPlayer', { pid: r.pid }); toast('Created — fine-tune in the editor'); },
   box(d) { go('box', { gid: isNaN(+d.gid) ? d.gid : +d.gid }); },
-  close() { S.modal = null; render(); },
+  close() { const keep = S.modal?.type === 'draftTeam'; S.modal = null; if (keep) renderModal(); else render(); },
+  draftTeam(d) { S.modal = { type: 'draftTeam', tid: +d.tid }; renderModal(); },
+  needsOnly() { S.needsOnly = !S.needsOnly; render(); },
+  tradePick(d) { const L = S.L; const k = L.picks.find(z => z.id === d.id); if (!k) return toast('Pick not found'); S.modal = null; renderModal();
+    if (k.tid === L.userTid) S.trade = { tid: S.trade?.tid != null && S.trade.tid !== L.userTid ? S.trade.tid : (L.userTid + 1) % L.teams.length, a: [], ap: [k.id], b: [], bp: [] }; else S.trade = { tid: k.tid, a: [], ap: [], b: [], bp: [k.id] };
+    S.tab.trade = 'machine'; S.fromDraft = true; go('trade'); },
   async saveNow() { await saveSlot(S.slot, S.L); S.drawer = false; render(); toast('Saved to slot ' + S.slot); },
   export() { exportJSON(S.L); },
   exportRoster() { const f = E.exportRosterFile(S.L); const blob = new Blob([JSON.stringify(f, null, 1)], { type: 'application/json' }); const a = document.createElement('a');
@@ -1300,7 +1323,7 @@ const A = {
     if (!confirm(`Force this trade?${warn.length ? '\n\nWarnings:\n• ' + warn.join('\n• ') : ''}`)) return;
     const r = E.executeMultiTrade(L, ct.teams.slice(), moves); if (!r.ok) return toast(r.error); ct.mv = {}; toast('Trade done');
     (L.inbox ||= []).unshift({ id: L.msgId++, season: L.season, day: L.day, from: 'Commissioner', subject: 'Trade completed', body: r.text, read: false }); autosave(); render(); },
-  propose() { const L = S.L, tr = S.trade; const o = { tidA: L.userTid, tidB: tr.tid, aPids: tr.a, aPicks: tr.ap, bPids: tr.b, bPicks: tr.bp }; const ev = E.evaluateTrade(L, o); if (!ev.ok) return toast(ev.error); const t = E.executeTrade(L, o); L.inbox.unshift({ id: L.msgId++, season: L.season, day: L.day, from: 'Front Office', subject: 'Trade completed', body: t, read: false }); toast('Trade accepted!'); S.trade = null; autosave(); render(); },
+  propose() { const L = S.L, tr = S.trade; const o = { tidA: L.userTid, tidB: tr.tid, aPids: tr.a, aPicks: tr.ap, bPids: tr.b, bPicks: tr.bp }; const ev = E.evaluateTrade(L, o); if (!ev.ok) return toast(ev.error); const t = E.executeTrade(L, o); L.inbox.unshift({ id: L.msgId++, season: L.season, day: L.day, from: 'Front Office', subject: 'Trade completed', body: t, read: false }); toast('Trade accepted!'); S.trade = null; autosave(); if (L.phase === 'DRAFT' && S.fromDraft) { S.fromDraft = false; S.tab.draft = 'avail'; return root('draft'); } render(); },
   staffRole(d) { S.staffRole = d.r; render(); },
   hire(d) { const r = E.hireStaff(S.L, +d.sid); if (!r.ok) return toast(r.error); toast('Hired!'); autosave(); render(); },
   promoteAC() { if (!confirm('Promote your assistant to head coach? Your current head coach leaves.')) return; const r = E.promoteAssistant(S.L); if (!r.ok) return toast(r.error); toast('Promoted to head coach'); autosave(); render(); },

@@ -7,7 +7,7 @@ import { managedSet, homeTid } from './control.js';
 import { applyArc, careerOf, careerMode, realTeamTid, arcYearsFrom, applyPeakNow, DEFAULT_PEAKS } from './careers.js';
 import { taxActive, taxLine, applyRules, stableRosters } from './franchise.js';
 import { capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, LOTTERY_WEIGHTS, PHASES } from './constants.js';
-import { marketValue, progress, anchorRatings, attrTops, anchorAttrTails, longevity, devTrait, generateVeteran, generateProspect, prospectFromReal, dispRating, ovrFromAttrs } from './players.js';
+import { marketValue, progress, anchorRatings, attrTops, anchorAttrTails, longevity, devTrait, generateVeteran, generateProspect, prospectFromReal, dispRating, ovrFromAttrs, eligiblePos } from './players.js';
 import { HOOKS, teamPlayers, getP, reindex, payroll, cap, msg, msgBatch, news, diff, teamName, teamOvr, standings, confSeeds, makeSchedule,
   startPlayoffs, seasonDone, resetSeasonStats, prodScore, createDraftClass, addPicksForSeason, genStaff, staffEffects, draftControls, logTx } from './league.js';
 
@@ -571,6 +571,23 @@ function aiPickValue(L, p, tid) {
   if (L.settings.draftClasses === 'real') return base * 0.5 + 42 - 14 * Math.log(32); // filler prospects in a real class: late-1st value
   return base;
 }
+// v43: team needs for the draft screen. Per position: best eligible player (natural pos full value, secondary pos -3),
+// next-best for depth, and penalties for an aging (33+) or expiring starter. Higher score = bigger need.
+export function teamNeedsDetail(L, tid) {
+  const ps = teamPlayers(L, tid); const yrsLeft = (p) => p.contract ? p.contract.exp - L.season + (['AWARDS', 'STAFF', 'LOTTERY', 'DRAFT'].includes(L.phase) ? 0 : 1) : 0;
+  return ['PG', 'SG', 'SF', 'PF', 'C'].map(pos => {
+    const el = ps.map(p => { const e = eligiblePos(p); const nat = p.pos === pos; const sec = !nat && e.includes(pos); return nat || sec ? { p, v: dispRating(p.ovr) - (nat ? 0 : 3) } : null; }).filter(Boolean).sort((a, b) => b.v - a.v);
+    const st = el[0], dp = el[1]; const sv = st?.v ?? 40, dv = dp?.v ?? 40;
+    const notes = []; let pen = 0;
+    if (!st) notes.push('no player'); if (!dp) notes.push('no depth');
+    if (st && st.p.age >= 33) { pen += 3 + (st.p.age - 33); notes.push(`aging starter (${st.p.age})`); }
+    if (st && yrsLeft(st.p) <= (['AWARDS', 'STAFF', 'LOTTERY', 'DRAFT'].includes(L.phase) ? 0 : 1)) { pen += 2; notes.push('starter expiring'); }
+    const score = Math.round((100 - (sv * 0.65 + dv * 0.35)) + pen);
+    return { pos, score, starter: st ? { pid: st.p.pid, name: st.p.name, ovr: Math.round(st.v + (st.p.pos === pos ? 0 : 3)) } : null, depth: el.length, notes };
+  }).sort((a, b) => b.score - a.score);
+}
+export const topNeeds = (L, tid, n = 2) => teamNeedsDetail(L, tid).slice(0, n).map(x => x.pos);
+export const fillsNeed = (L, p, tid) => { const t = topNeeds(L, tid); return eligiblePos(p).some(x => t.includes(x)) || t.includes(p.pos); };
 export function draftPlayer(L, pid) {
   const D = L.draft; const slot = D.order[D.idx]; if (!slot) return { ok: false, error: 'Draft over' };
   const p = getP(L, pid); if (!p || p.tid !== -2) return { ok: false, error: 'Not available' };

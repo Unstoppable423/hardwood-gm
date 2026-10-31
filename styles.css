@@ -248,3 +248,7 @@ html{scroll-padding-top:56px;scroll-padding-bottom:calc(var(--ctaH,0px) + env(sa
 .tscroll{-webkit-overflow-scrolling:touch}
 table.full td,table.full th{white-space:nowrap;padding-left:7px;padding-right:7px}
 table.full tr>:first-child{position:sticky;left:0;background:var(--card);z-index:1}
+/* v43: draft team sheet + needs */
+.ribbon>div[data-a]{cursor:pointer}
+.clock[data-a]{cursor:pointer}
+.needtag{background:var(--q4,#2e9d5b);color:#fff;font-size:10px;padding:1px 5px;border-radius:6px;vertical-align:1px}

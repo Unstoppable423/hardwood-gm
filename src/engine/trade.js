@@ -61,19 +61,21 @@ export function executeMultiTrade(L, tids, moves) {
     if (from == null || !tids.includes(from) || !tids.includes(m.to) || from === m.to) return { ok: false, error: 'An asset is no longer with its team' }; m.from = from; }
   if (!moves.length) return { ok: false, error: 'Nothing selected' };
   for (const m of moves) { if (m.pid != null) getP(L, m.pid).tid = m.to; else L.picks.find(k => k.id === m.pick).tid = m.to; }
-  if (L.draftOrder) for (const d of L.draftOrder) { const pk = L.picks.find(p => p.id === d.id); if (pk) d.tid = pk.tid; }
+  syncDraftOrder(L);
   for (const tid of tids) { const t = L.teams[tid]; if (t.rotation) t.rotation = null; }
   const nm = (m) => m.pid != null ? getP(L, m.pid).name : m.pick.replace(/-(\d)-/, ' R$1 ');
   const text = `${tids.length}-team trade: ` + tids.map(t => `${L.teams[t].abbr} get ${moves.filter(m => m.to === t).map(nm).join(', ') || 'nothing'}`).join('; ') + '.';
   news(L, `🔁 ${text}`, 'trade', tids[0]); logTx(L, { type: 'trade', text }, moves.filter(m => m.pid != null).map(m => m.pid));
   return { ok: true, text };
 }
+// v43: after a pick changes hands, both the stored order and the live draft's order follow it (they are separate arrays after a save reload)
+export function syncDraftOrder(L) { for (const arr of [L.draftOrder, L.draft?.order]) if (arr) for (const d of arr) { const pk = L.picks.find(p => p.id === d.id); if (pk) d.tid = pk.tid; } }
 export function executeTrade(L, o) {
   for (const id of o.aPids) { const p = getP(L, id); p.tid = o.tidB; }
   for (const id of o.bPids) { const p = getP(L, id); p.tid = o.tidA; }
   for (const id of o.aPicks) L.picks.find(p => p.id === id).tid = o.tidB;
   for (const id of o.bPicks) L.picks.find(p => p.id === id).tid = o.tidA;
-  if (L.draftOrder) for (const d of L.draftOrder) { const pk = L.picks.find(p => p.id === d.id); if (pk) d.tid = pk.tid; }
+  syncDraftOrder(L);
   for (const tid of [o.tidA, o.tidB]) { const t = L.teams[tid]; if (t.rotation) t.rotation = null; }
   const desc = (pids, picks) => [...pids.map(id => getP(L, id).name), ...picks.map(id => id.replace(/-(\d)-/, ' R$1 '))].join(', ') || 'nothing';
   const text = `${L.teams[o.tidA].abbr} trade ${desc(o.aPids, o.aPicks)} to ${L.teams[o.tidB].abbr} for ${desc(o.bPids, o.bPicks)}.`;
