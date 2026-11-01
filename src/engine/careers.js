@@ -2,7 +2,7 @@
 // players (public box-score facts 1996-97..2020-21, scripts/build_careers.py) is mapped by OUR rating formula
 // (same percentile curve as the 1996 start ratings) to a target OVR for that season. Real: follow closely;
 // Mostly real: halfway; Random: ignore (old random development + optional real-career tendency).
-import { pctToOvr, ovrFromAttrs, internalFor } from './players.js';
+import { pctToOvr, ovrFromAttrs, internalFor, floorReal } from './players.js';
 import { normal, rand, clamp } from './rng.js';
 export const CAREER_W = { real: 0.85, mostly: 0.5, random: 0 };
 const ARC_END = 2020; // last season in the source data
@@ -82,10 +82,11 @@ export function applyPeakNow(L, p, S) {
 export function calibrateRealProspect(L, p, s) {
   if (!p.real || p.calV45 || careerMode(L) === 'random') return; p.calV45 = true;
   const c = careerOf(L, p);
-  if (!c) { if (s <= ARC_END - 1 && p.arcKey === null || !c) { p.arcKey = null; const d = -7; shiftAll(p, d); p.pot = Math.max(p.ovr, Math.min(p.pot, p.ovr + 3)); p.histPot = null; } return; }
+  if (!c) { if (s <= ARC_END - 1 && p.arcKey === null || !c) { p.arcKey = null; const d = -7; shiftAll(p, d); p.pot = Math.max(p.ovr, Math.min(p.pot, p.ovr + 3)); p.histPot = null; } floorReal(p); return; }
   const ys = Object.keys(c.a).map(Number).sort((a, b) => a - b); const fy = ys[0]; const ft = arcTarget(c.a[String(fy)]);
   const est = ft - 2.5 * Math.max(0, fy - s) - 1; const goal = Math.round(0.65 * est + 0.35 * p.ovr);
   shiftAll(p, goal - p.ovr);
   const ap = arcPot(L, p, s); if (ap != null) { p.pot = Math.max(p.ovr, ap); p.histPot = null; }
+  floorReal(p);
 }
 function shiftAll(p, d) { if (!d) return; for (const k of Object.keys(p.ratings)) if (k !== 'sta' && k !== 'dur' && typeof p.ratings[k] === 'number') p.ratings[k] = k === 'sco' ? clamp(Math.round(p.ratings[k] + d * 0.5), 20, 92) : clamp(p.ratings[k] + d, 20, 99); p.ovr = ovrFromAttrs(p.ratings, p.pos); }

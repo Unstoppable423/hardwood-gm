@@ -7,7 +7,7 @@ import { managedSet, homeTid } from './control.js';
 import { applyArc, careerOf, normName, careerMode, realTeamTid, arcYearsFrom, applyPeakNow, DEFAULT_PEAKS } from './careers.js';
 import { taxActive, taxLine, applyRules, stableRosters } from './franchise.js';
 import { capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, LOTTERY_WEIGHTS, PHASES } from './constants.js';
-import { marketValue, progress, anchorRatings, attrTops, anchorAttrTails, longevity, devTrait, capFictional, generateVeteran, generateProspect, prospectFromReal, dispRating, ovrFromAttrs, eligiblePos } from './players.js';
+import { marketValue, progress, anchorRatings, attrTops, anchorAttrTails, longevity, devTrait, capFictional, floorReal, generateVeteran, generateProspect, prospectFromReal, dispRating, ovrFromAttrs, eligiblePos } from './players.js';
 import { HOOKS, teamPlayers, getP, reindex, payroll, cap, msg, msgBatch, news, diff, teamName, teamOvr, standings, confSeeds, makeSchedule,
   startPlayoffs, seasonDone, resetSeasonStats, prodScore, createDraftClass, addPicksForSeason, ensureFuturePicks, genStaff, staffEffects, draftControls, logTx } from './league.js';
 
@@ -379,7 +379,7 @@ export function addStashedReal(L) {
 export function endHiatus(L, p) {
   const h = p.hiatus; p.age = h.age + (h.until - h.from) - 1; p.retired = false; delete p.retiredSeason; p.tid = -1; delete p.hiatus; p.comebackSeason = L.season;
   resetSeasonStats(p, L.season);
-  applyArc(L, p, L.season - 1); // ratings for the comeback season (career keys = season start year = L.season - 1)
+  applyArc(L, p, L.season - 1); floorReal(p); // ratings for the comeback season (career keys = season start year = L.season - 1)
   const tid = realTeamTid(L, p, L.season - 1);
   const stash = h.stash; // v46: draft-and-stash player arriving from overseas
   news(L, stash ? `${p.name} arrives from overseas to start his NBA career.` : `${p.name} is coming out of retirement at ${p.age + 1}!`, 'sign', null);
@@ -816,7 +816,7 @@ function enterSummer(L) {
   L.anchorShift = anchorRatings(L.players, L.ratingAnchor);
   for (const p of L.players) if (!p.retired && p.tid >= -1 && (p.peakTarget != null || DEFAULT_PEAKS[p.name])) applyPeakNow(L, p, L.season - 1); // peak targets survive the league anchor
   if (PROG_CAP.on) for (const p of L.players) if (!p.retired && p.tid >= -1 && p.prevOvr != null && p.prevRatings) capYearChange(p);
-  for (const p of L.players) if (!p.retired && p.tid >= -2) capFictional(p); // v47: filler stays filler
+  for (const p of L.players) if (!p.retired && p.tid >= -2) { capFictional(p); floorReal(p); } // v47: filler stays filler; v48: real players >= 70
   for (const p of L.players) {
     if (p.tid !== L.userTid || p.prevOvr == null) continue; const d = p.ovr - p.prevOvr;
     L.progressReport.push({ pid: p.pid, name: p.name, d, ovr: p.ovr, age: p.age });
