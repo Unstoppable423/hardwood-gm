@@ -250,8 +250,18 @@ export function generateProspect(draftYear, quality = 0, opts = {}) {
   const p = baseShell(genName(draftYear), age, Math.round(hcm * 10) / 10, Math.round((hcm - 100) * 1.05), pos,
     { college: rand() < 0.2 ? 'International' : `${pick(LAST)} ${pick(COLLEGES)}`, country: rand() < 0.2 ? pick(['France', 'Serbia', 'Spain', 'Nigeria', 'Australia', 'Brazil', 'Lithuania']) : 'USA' });
   fillProspect(p, 46 + quality + normal(0, 5) - (22 - age), opts);
-  p.real = false; p.born = draftYear - age;
+  p.real = false; p.born = draftYear - age; capFictional(p);
   return p;
+}
+// v47: fictional players (generated filler, no real career) never become stars: personal ceiling 66-72 shown OVR.
+export const isFictional = (p) => p && p.real === false && !p.custom && !p.edited;
+export const fictionalCap = (p) => 66 + (((p.pid ?? 0) * 7919) % 7); // shown-rating ceiling, deterministic per player
+export function capFictional(p) {
+  if (!isFictional(p)) return false; const capI = internalFor(fictionalCap(p)); let changed = false;
+  for (let i = 0; i < 40 && p.ovr > capI; i++) { const d = Math.max(1, Math.round((p.ovr - capI) * 0.8));
+    for (const k of Object.keys(p.ratings)) if (k !== 'sta' && k !== 'dur' && typeof p.ratings[k] === 'number') p.ratings[k] = clamp(k === 'sco' ? Math.round(p.ratings[k] - d * 0.5) : p.ratings[k] - d, 20, 99);
+    p.ovr = ovrFromAttrs(p.ratings, p.pos); changed = true; }
+  if (p.pot > capI) { p.pot = capI; changed = true; } if (p.pot < p.ovr) p.pot = p.ovr; return changed;
 }
 export function generateVeteran(season, ovrTarget) {
   const p = generateProspect(season, 0);

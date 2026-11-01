@@ -10,7 +10,7 @@ import { ensureSettings, applyRules, deadlineDay, simEdge, seriesLen } from './f
 import { TEAMS, capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, DIFFICULTY, PHASE_LABEL } from './constants.js';
 import { careerMode, arcPot, applyPeakNow, calibrateRealProspect } from './careers.js';
 import { START_FUTURE, histPotFromPeak, attrTops, playerFromStats, finalizeStartRatings, prospectFromReal, generateProspect, generateVeteran, devTrait, marketValue,
-  setNextPid, getNextPid, POS_OVERRIDE, REAL_STARTERS, POS_ELIG, eligiblePos, genName, ovrFromAttrs } from './players.js';
+  setNextPid, getNextPid, POS_OVERRIDE, REAL_STARTERS, POS_ELIG, eligiblePos, genName, ovrFromAttrs, capFictional } from './players.js';
 import { simGame, autoRotation } from './sim.js';
 import { startPreseason, cpuUpgrade, addStashedReal } from './offseason.js';
 
@@ -27,6 +27,7 @@ export function markRealStarters(L) { if (L.rsMarked || L.season < 1997 || L.sea
   for (const t of L.teams) if (REAL_STARTERS[t.abbr] && t.autoRotation !== false) t.rotation = null; }
 export function repairSave(L) {
   if (L.picks && L.teams && L.season) ensureFuturePicks(L);
+  if (L.players && !L.capV47) { L.capV47 = true; for (const p of L.players) if (!p.retired) capFictional(p); } // v47 migration: clamp fictional stars
   if (L.players && L.data?.careers && !L.stashV46) { L.stashV46 = true; addStashedReal(L); } // v46 migration: missing draft-and-stash real players
   if (L.players && L.data?.careers) for (const p of L.players) if (p.tid === -2 && p.real && !p.calV45 && p.draft?.year) calibrateRealProspect(L, p, p.draft.year); // v45 migration // v45 migration: fill missing future years for original owners
   let mx = 0; for (const p of L.players) if (p.pid > mx) mx = p.pid; setNextPid(Math.max(getNextPid(), mx + 1));

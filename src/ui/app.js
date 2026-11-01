@@ -557,7 +557,7 @@ function gamesTab(p) {
 function careerTab(p, pot) {
   const L = S.L;
   const rows = p.career.map(c => ({ ...c }));
-  const s = p.stats.reg; if (s.gp) rows.push({ season: p.stats.season, abbr: L.teams[p.tid]?.abbr || 'FA', ...s, reb: rebOf(s), cur: true });
+  const s = p.stats.reg; if (s.gp && !p.career.some(c => c.season === p.stats.season)) rows.push({ season: p.stats.season, abbr: L.teams[p.tid]?.abbr || 'FA', ...s, reb: rebOf(s), cur: true });
   const t = E.careerTotals(p);
   const pts = [...p.hist.map(h => ({ s: h.season, o: R(h.ovr) })), { s: L.season, o: R(p.ovr) }];
   const w = 320, h = 80, mn = Math.min(...pts.map(x => x.o)) - 3, mx = Math.max(R(pot), ...pts.map(x => x.o)) + 2;

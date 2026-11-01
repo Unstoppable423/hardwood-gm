@@ -7,7 +7,7 @@ import { managedSet, homeTid } from './control.js';
 import { applyArc, careerOf, normName, careerMode, realTeamTid, arcYearsFrom, applyPeakNow, DEFAULT_PEAKS } from './careers.js';
 import { taxActive, taxLine, applyRules, stableRosters } from './franchise.js';
 import { capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, LOTTERY_WEIGHTS, PHASES } from './constants.js';
-import { marketValue, progress, anchorRatings, attrTops, anchorAttrTails, longevity, devTrait, generateVeteran, generateProspect, prospectFromReal, dispRating, ovrFromAttrs, eligiblePos } from './players.js';
+import { marketValue, progress, anchorRatings, attrTops, anchorAttrTails, longevity, devTrait, capFictional, generateVeteran, generateProspect, prospectFromReal, dispRating, ovrFromAttrs, eligiblePos } from './players.js';
 import { HOOKS, teamPlayers, getP, reindex, payroll, cap, msg, msgBatch, news, diff, teamName, teamOvr, standings, confSeeds, makeSchedule,
   startPlayoffs, seasonDone, resetSeasonStats, prodScore, createDraftClass, addPicksForSeason, ensureFuturePicks, genStaff, staffEffects, draftControls, logTx } from './league.js';
 
@@ -816,6 +816,7 @@ function enterSummer(L) {
   L.anchorShift = anchorRatings(L.players, L.ratingAnchor);
   for (const p of L.players) if (!p.retired && p.tid >= -1 && (p.peakTarget != null || DEFAULT_PEAKS[p.name])) applyPeakNow(L, p, L.season - 1); // peak targets survive the league anchor
   if (PROG_CAP.on) for (const p of L.players) if (!p.retired && p.tid >= -1 && p.prevOvr != null && p.prevRatings) capYearChange(p);
+  for (const p of L.players) if (!p.retired && p.tid >= -2) capFictional(p); // v47: filler stays filler
   for (const p of L.players) {
     if (p.tid !== L.userTid || p.prevOvr == null) continue; const d = p.ovr - p.prevOvr;
     L.progressReport.push({ pid: p.pid, name: p.name, d, ovr: p.ovr, age: p.age });
