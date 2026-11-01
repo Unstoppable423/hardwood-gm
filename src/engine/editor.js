@@ -132,7 +132,7 @@ export function faAddExisting(L, pid) { // retired / overseas player returns, or
   const p = getP(L, pid); if (!faPoolOpen(L)) return { ok: false, error: 'The FA pool can be edited in the offseason.' };
   if (!p || p.tid === -1) return { ok: false, error: 'Already a free agent.' };
   const from = p.tid; if (p.tid === -2) return { ok: false, error: 'Draft prospects enter through the draft.' };
-  if (p.retired) { p.retired = false; p.overseas = undefined; p.retiredSeason = undefined; }
+  if (p.retired) { p.retired = false; p.overseas = undefined; p.retiredSeason = undefined; delete p.hiatus; delete p.stashed; }
   if (from >= 0) { p.formerTid = from; L.teams[from].rotation = null; }
   p.tid = -1; p.contract = null; p.il = false; if (p.stats) p.stats.tid = -1;
   logTx(L, { type: 'edit', text: from >= 0 ? `Commissioner release to free agency (from ${L.teams[from].abbr})` : 'Added to the free-agent pool' }, [p.pid]); reindex(L);

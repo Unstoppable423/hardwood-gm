@@ -4,7 +4,7 @@ import { teamFit } from './schemes.js';
 import { applyHistory, lotteryRule } from './history.js';
 import { ERA, gpReq } from './era.js';
 import { managedSet, homeTid } from './control.js';
-import { applyArc, careerOf, careerMode, realTeamTid, arcYearsFrom, applyPeakNow, DEFAULT_PEAKS } from './careers.js';
+import { applyArc, careerOf, normName, careerMode, realTeamTid, arcYearsFrom, applyPeakNow, DEFAULT_PEAKS } from './careers.js';
 import { taxActive, taxLine, applyRules, stableRosters } from './franchise.js';
 import { capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, LOTTERY_WEIGHTS, PHASES } from './constants.js';
 import { marketValue, progress, anchorRatings, attrTops, anchorAttrTails, longevity, devTrait, generateVeteran, generateProspect, prospectFromReal, dispRating, ovrFromAttrs, eligiblePos } from './players.js';
@@ -357,19 +357,42 @@ export function realComebacks(L) {
     p.hiatus = { from: p.retiredSeason - 1, until: K, age: p.age, exTid: p.formerTid ?? -1 }; endHiatus(L, p); n++; }
   return n;
 }
+// v46: real players drafted before the save's first draft whose NBA career starts later (Peja Stojakovic 1996 -> 1998-99 SAC,
+// Ilgauskas, Rebraca, Rentzias...) are missing from the start rosters. Add them overseas holding a comeback-style arrival; if the save is
+// already past their arrival, they arrive now (CPU real team; user's team -> free agency with a note).
+const STASH_BIO = { 'Peja Stojakovic': ['SF', 208, 104, 1, 14], 'Zeljko Rebraca': ['C', 213, 116, 2, 55], 'Dragan Tarlac': ['C', 211, 113, 2, 31], 'Efthimios Rentzias': ['C', 211, 111, 1, 23],
+  'Mark Pope': ['PF', 208, 107, 2, 52], 'Drew Barry': ['SG', 196, 86, 2, 57], 'Lawrence Funderburke': ['PF', 206, 104, 2, 51], 'Ed Stokes': ['C', 213, 118, 2, 35], 'Michael McDonald': ['C', 211, 113, 0, 0],
+  "Dontae' Jones": ['SF', 201, 100, 1, 21], 'Jeff Nordgaard': ['SF', 201, 100, 2, 53], 'Zydrunas Ilgauskas': ['C', 221, 118, 1, 20] };
+export function addStashedReal(L) {
+  if (careerMode(L) !== 'real' || !L.data?.careers) return 0; const C = L.data.careers; const S0 = (L.histStart || 1997) - 1; let n = 0;
+  const have = new Set(L.players.map(p => normName(p.name)));
+  for (const [k, c] of Object.entries(C)) { const [nm, dyS] = k.split('|'); if (dyS === 'U') continue; const dy = +dyS; if (dy > S0 || dy < S0 - 12) continue;
+    const ys = Object.keys(c.a).map(Number); const fy = Math.min(...ys); if (fy <= S0 || have.has(nm)) continue;
+    const e = c.a[String(fy)]; const bio = STASH_BIO[c.n] || [null, 203, 100, 2, 45]; const ageAtDraft = (e[3] ?? 23) - (fy - dy);
+    const raw = { n: c.n, age: ageAtDraft, h: bio[1], w: bio[2], pos: bio[0], col: 'Overseas', ctry: '', dy, dr: bio[3] || null, dp: bio[4] || null };
+    const p = prospectFromReal(raw, dy, { histTendency: 0.5 }); p.arcKey = k; p.age = (e[3] ?? 23) - (fy - S0) + 1 - 1; p.draft = { year: dy, round: raw.dr, pick: raw.dp, tid: null };
+    p.tid = -3; p.retired = true; p.overseas = true; p.stashed = true; p.retiredSeason = S0; p.devTrait = devTrait(p); resetSeasonStats(p, L.season);
+    p.hiatus = { from: fy, until: fy, age: e[3] ?? p.age, exTid: -1, stash: true, rights: null }; L.players.push(p); have.add(nm); n++;
+    if (fy <= L.season - 1 && L.phase !== 'PRESEASON_INIT') endHiatus(L, p); }
+  if (n) reindex(L); return n;
+}
 export function endHiatus(L, p) {
   const h = p.hiatus; p.age = h.age + (h.until - h.from) - 1; p.retired = false; delete p.retiredSeason; p.tid = -1; delete p.hiatus; p.comebackSeason = L.season;
   resetSeasonStats(p, L.season);
   applyArc(L, p, L.season - 1); // ratings for the comeback season (career keys = season start year = L.season - 1)
   const tid = realTeamTid(L, p, L.season - 1);
-  news(L, `${p.name} is coming out of retirement at ${p.age + 1}!`, 'sign', null);
+  const stash = h.stash; // v46: draft-and-stash player arriving from overseas
+  news(L, stash ? `${p.name} arrives from overseas to start his NBA career.` : `${p.name} is coming out of retirement at ${p.age + 1}!`, 'sign', null);
+  if (stash && h.rights != null && h.rights === L.userTid && !L.teams[h.rights]?.inactive) { // the user drafted him: he signs with the user
+    sign(L, p, h.rights, minSalary(L.season), Math.max(2, Math.min(3, arcYearsFrom(L, p, L.season - 1))));
+    msg(L, 'Front Office', `${p.name} arrives`, `${p.name}, whose draft rights you hold, has come over from overseas and signed with us.`); return; }
   if (tid != null && !managedSet(L).has(tid) && careerMode(L) === 'real' && teamPlayers(L, tid).length >= ROSTER_MAX) { // v40: CPU rosters are full (15); waive the weakest cheap player to make room
     const minS = minSalary(L.season); const cut = teamPlayers(L, tid).filter(q => (q.contract?.amt || 0) <= minS * 2.2).sort((a, b) => a.ovr - b.ovr)[0]; if (cut) { release(L, cut, true); cut.waived = true; } }
   if (tid != null && !managedSet(L).has(tid) && careerMode(L) === 'real' && (L.phase !== 'REGULAR' || teamPlayers(L, tid).length < ROSTER_MAX)) { // offseason: training camp trims CPU rosters to 15
     const ask = askingAmount(L, p, tid, 'fa', 3); const aff = canAfford(L, tid, ask);
     sign(L, p, tid, aff.ok ? ask : minSalary(L.season), arcYearsFrom(L, p, L.season - 1));
     news(L, `${p.name} signs with the ${teamName(L, tid)} in his comeback.`, 'fa', tid);
-  } else { p.formerTid = h.exTid >= 0 ? h.exTid : undefined; msg(L, 'Front Office', `${p.name} is un-retiring`, `${p.name} is back and available in free agency${tid === L.userTid ? ' — and he wants to play for you' : ''}.`); if (tid === L.userTid) p.faInterest = 1.25; }
+  } else { p.formerTid = h.exTid >= 0 ? h.exTid : undefined; msg(L, 'Front Office', stash ? `${p.name} arrives from overseas` : `${p.name} is un-retiring`, stash ? `${p.name} is starting his NBA career and is in free agency${tid === L.userTid ? ' — his real team was yours, so he is waiting for your offer (Free Agents)' : ''}.` : `${p.name} is back and available in free agency${tid === L.userTid ? ' — and he wants to play for you' : ''}.`); if (tid === L.userTid) p.faInterest = 1.25; }
 }
 function retire(L, p, quiet = false) {
   const ex = p.tid; p.retired = true; p.retiredSeason = L.season; p.tid = -3; p.contract = null;
@@ -597,6 +620,10 @@ export function draftPlayer(L, pid) {
   const amt = L.settings.rookieScale === false ? Math.round(clamp(marketValue(p, L.season + 1) * 0.85, minSalary(L.season + 1), maxSalary(L.season + 1, p)) / 10) * 10 : slot.round === 1 ? Math.max(minSalary(L.season + 1), Math.round(capFor(L.season + 1) * 0.105 * Math.pow(0.93, slot.pick - 1) / 10) * 10) : minSalary(L.season + 1);
   p.contract = { amt, exp: L.season + yrs, rookie: true, ng: slot.round === 2, signed: L.season };
   D.log.push({ pick: slot.pick, round: slot.round, tid: slot.tid, pid, name: p.name, pos: p.pos });
+  { const c = careerMode(L) === 'real' && p.real ? careerOf(L, p) : null; const fy = c ? Math.min(...Object.keys(c.a).map(Number)) : null; // v46: draft-and-stash (Ginobili, Kirilenko)
+    if (fy != null && fy > L.season) { p.contract = null; p.tid = -3; p.retired = true; p.overseas = true; p.stashed = true; p.retiredSeason = L.season;
+      p.hiatus = { from: fy, until: fy, age: c.a[String(fy)][3] ?? p.age + (fy - L.season), exTid: slot.tid, stash: true, rights: slot.tid };
+      news(L, `${L.teams[slot.tid].abbr} draft ${p.name} and stash him overseas (expected ${fy}-${String(fy + 1).slice(2)}).`, 'draft', slot.tid); } }
   L.picks = L.picks.filter(x => x.id !== slot.id);
   D.idx++;
   if (draftControls(L, slot.tid)) news(L, `${L.teams[slot.tid].abbr} select ${p.name} with pick #${slot.pick}.`, 'draft', slot.tid);

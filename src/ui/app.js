@@ -33,6 +33,7 @@ const half2 = (v) => Math.max(1, Math.min(10, Math.round((E.dispRating(v) - 50) 
 const stars = (pot, cur) => cur == null ? starRow(half2(pot)) : starRow2(half2(cur), half2(pot)); // v45: solid = now, faded = potential
 const pg = (s, k) => s.gp ? (s[k] / s.gp).toFixed(1) : '0.0';
 const rebOf = (s) => s.orb + s.drb;
+const fold = (x) => String(x || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); // v46: diacritic-insensitive search (Stojaković = stojakovic)
 // v42: full box-score columns. s = totals (gp + counting stats); per = divide by gp (averages) or 1 (single game). Missing fields show '—'.
 const FULL_HEAD = ['GP', 'GS', 'MIN', 'FGM-FGA', 'FG%', '3PM-3PA', '3P%', 'FTM-FTA', 'FT%', 'OREB', 'DREB', 'REB', 'AST', 'STL', 'BLK', 'TOV', 'PF', 'PTS'];
 function fullCells(s, per = s.gp || 1, { game = false } = {}) {
@@ -677,7 +678,7 @@ function tradeMachine(L) {
 function allPlayers(L) {
   let ps = L.players.filter(p => p.tid >= 0 && p.tid !== L.userTid);
   if (S.apPos !== 'All') ps = ps.filter(p => p.pos === S.apPos);
-  if (S.apQ) { const q = S.apQ.toLowerCase(); ps = ps.filter(p => p.name.toLowerCase().includes(q)); }
+  if (S.apQ) { const q = fold(S.apQ); ps = ps.filter(p => fold(p.name).includes(q)); }
   ps.sort((a, b) => b.ovr - a.ovr);
   return `<div style="padding:8px 10px"><input data-a="apQ" placeholder="Search players" value="${esc(S.apQ)}"></div>${pillSeg('apPos', ['All', ...E.POS].map(x => [x, x]))}
   <div class="list">${ps.slice(0, 60).map(p => playerRow(p, { meta: `${p.pos} · ${T(p.tid).abbr} · Age ${p.age} · ${M(p.contract?.amt || 0)}` })).join('')}</div>`;
@@ -1008,8 +1009,8 @@ PAGES.editPlayer = (pg0) => {
 // ---------- FREE AGENT POOL EDITOR ----------
 PAGES.fapool = () => {
   const L = S.L; const open = E.faPoolOpen(L);
-  const ps = E.faPool(L).sort((a, b) => b.ovr - a.ovr); const q = (S.fpQ || '').toLowerCase();
-  const back = L.players.filter(p => p.retired && (p.overseas || p.retiredSeason >= L.season - 2) && !p.hof && (!q || p.name.toLowerCase().includes(q))).sort((a, b) => b.ovr - a.ovr).slice(0, 12);
+  const ps = E.faPool(L).sort((a, b) => b.ovr - a.ovr); const q = fold(S.fpQ);
+  const back = L.players.filter(p => p.retired && (p.overseas || p.retiredSeason >= L.season - 2) && !p.hof && (!q || fold(p.name).includes(q))).sort((a, b) => b.ovr - a.ovr).slice(0, 12);
   const terms = (p) => { const t = S.fpT === p.pid; const ask = E.askingAmount(L, p, L.userTid, 'fa', E.faRound(L) || 1);
     return `<div class="it"><div class="grow" data-a="player" data-pid="${p.pid}"><div class="nm">${esc(p.name)}${p.custom ? ' <span class="tag">CUSTOM</span>' : ''}</div><div class="meta">${p.pos} · Age ${p.age} · asks ${M(ask)} · ${E.prefYears(p, L)} yr${p.faInterest != null ? ` · interest ${p.faInterest >= 1.1 ? 'High' : p.faInterest <= 0.9 ? 'Low' : 'Normal'}` : ''}</div></div>${sq(p.ovr)}
     <button class="sm" data-a="fpTerms" data-pid="${p.pid}">Terms</button><button class="sm" data-a="edit" data-pid="${p.pid}" aria-label="Edit ${esc(p.name)}">${icon('pen', { s: 16 })}</button><button class="sm red" data-a="fpRemove" data-pid="${p.pid}" aria-label="Remove ${esc(p.name)}">✕</button></div>

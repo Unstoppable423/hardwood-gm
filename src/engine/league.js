@@ -12,7 +12,7 @@ import { careerMode, arcPot, applyPeakNow, calibrateRealProspect } from './caree
 import { START_FUTURE, histPotFromPeak, attrTops, playerFromStats, finalizeStartRatings, prospectFromReal, generateProspect, generateVeteran, devTrait, marketValue,
   setNextPid, getNextPid, POS_OVERRIDE, REAL_STARTERS, POS_ELIG, eligiblePos, genName, ovrFromAttrs } from './players.js';
 import { simGame, autoRotation } from './sim.js';
-import { startPreseason, cpuUpgrade } from './offseason.js';
+import { startPreseason, cpuUpgrade, addStashedReal } from './offseason.js';
 
 export const VERSION = 1;
 // ---------- helpers ----------
@@ -27,6 +27,7 @@ export function markRealStarters(L) { if (L.rsMarked || L.season < 1997 || L.sea
   for (const t of L.teams) if (REAL_STARTERS[t.abbr] && t.autoRotation !== false) t.rotation = null; }
 export function repairSave(L) {
   if (L.picks && L.teams && L.season) ensureFuturePicks(L);
+  if (L.players && L.data?.careers && !L.stashV46) { L.stashV46 = true; addStashedReal(L); } // v46 migration: missing draft-and-stash real players
   if (L.players && L.data?.careers) for (const p of L.players) if (p.tid === -2 && p.real && !p.calV45 && p.draft?.year) calibrateRealProspect(L, p, p.draft.year); // v45 migration // v45 migration: fill missing future years for original owners
   let mx = 0; for (const p of L.players) if (p.pid > mx) mx = p.pid; setNextPid(Math.max(getNextPid(), mx + 1));
   const groups = new Map(); for (const p of L.players) { if (!groups.has(p.pid)) groups.set(p.pid, []); groups.get(p.pid).push(p); }
@@ -229,7 +230,7 @@ export function newLeague(data, opts = {}) {
   for (const t of L.teams) if (!t.inactive) for (const role of ['HC', 'AC', 'SC', 'TR']) t.staff[role] = genStaff(role, season);
   L.staffPool = Array.from({ length: 24 }, (_, i) => genStaff(['HC', 'AC', 'SC', 'TR'][i % 4], season));
   // draft picks for next 2 drafts
-  for (const s of [season, season + 1]) addPicksForSeason(L, s); ensureFuturePicks(L);
+  for (const s of [season, season + 1]) addPicksForSeason(L, s); ensureFuturePicks(L); if (!L.stashV46) { L.stashV46 = true; addStashedReal(L); }
   L.dcGlobal = opts.dcGlobal && typeof opts.dcGlobal === 'object' ? JSON.parse(JSON.stringify(opts.dcGlobal)) : {};
   createDraftClass(L, season);
   startPreseason(L, true);
