@@ -112,8 +112,8 @@ async function boot() {
 }
 async function loadData() {
   if (DATA) return DATA;
-  const [start, classes, history, contracts] = await Promise.all([fetch('data/start1996.json').then(r => r.json()), fetch('data/draftclasses.json').then(r => r.json()), fetch('data/history.json').then(r => r.json()).catch(() => null), fetch('data/contracts1996.json').then(r => r.json()).catch(() => null)]);
-  DATA = { start, classes, history, contracts }; return DATA;
+  const [start, classes, history, contracts, seasonTotals] = await Promise.all([fetch('data/start1996.json').then(r => r.json()), fetch('data/draftclasses.json').then(r => r.json()), fetch('data/history.json').then(r => r.json()).catch(() => null), fetch('data/contracts1996.json').then(r => r.json()).catch(() => null), fetch('data/season-totals.json').then(r => r.json()).catch(() => null)]);
+  DATA = { start, classes, history, contracts, seasonTotals }; return DATA;
 }
 function attach(L) {
   L.dcGlobal = dcGlobal();
@@ -862,14 +862,15 @@ function storiesTab(L) {
 function leadersTab(L) {
   S.leadScope ||= 'nba'; S.leadSide ||= 'reg'; S.leadStat ||= 'pts';
   const history = (typeof DATA !== 'undefined' && DATA && DATA.history) || L.data?.history || null;
+  const seasons = (typeof DATA !== 'undefined' && DATA && DATA.seasonTotals) || null;
   if (S.leadScope === 'franchise' && !S.leadFid) S.leadFid = E.franchiseIdOfTeam(T(L.userTid));
-  const board = E.careerBoard(L, { history, scope: S.leadScope === 'nba' ? 'nba' : S.leadFid, side: S.leadSide, stat: S.leadStat });
+  const board = E.careerBoard(L, { history: seasons ? null : history, seasons, scope: S.leadScope === 'nba' ? 'nba' : S.leadFid, side: S.leadSide, stat: S.leadStat });
   const c = board.coverage;
   const fmt = (r) => c.rateMin ? (r.value * 100).toFixed(1) : Math.round(r.value).toLocaleString('en-US');
   const detail = (r) => {
-    if (S.leadStat !== 'gp' || S.leadSide !== 'reg') return r.simulated != null && S.leadStat === 'gp' ? '' : '';
+    if (c.rateMin) return '';
     const bits = [];
-    if (r.recorded) bits.push(`${r.recorded.toLocaleString('en-US')} recorded before this save`);
+    if (r.recorded) bits.push(`${Math.round(r.recorded).toLocaleString('en-US')} before this save`);
     if (r.simulated) bits.push(`${Math.round(r.simulated).toLocaleString('en-US')} simulated`);
     return bits.join(' · ');
   };
@@ -883,10 +884,12 @@ function leadersTab(L) {
     const who = r.pid != null ? `<span class="plink" data-a="player" data-pid="${r.pid}">${esc(r.name)}</span>` : esc(r.name);
     return `<div class="it"><b style="width:28px" class="muted">${r.rank}</b><div class="grow"><div class="nm">${who}${r.retired ? ' <span class="muted">retired</span>' : ''}</div><div class="meta">${team}${detail(r) ? ' · ' + detail(r) : ''}</div></div><b>${fmt(r)}</b></div>`;
   }).join('');
-  const gap = c.side === 'po'
-    ? c.historicalNote
-    : `${c.historicalNote} Recorded games included: ${c.recordedGames.toLocaleString('en-US')}. Estimated seasons left out: ${c.omittedEstimatedSeasons.toLocaleString('en-US')}. Two-team seasons kept out of franchise totals: ${c.unsplitFranchiseSeasons.toLocaleString('en-US')} (${c.unsplitFranchiseGames.toLocaleString('en-US')} games).`;
-  return `<div class="card plain">${esc(c.simulatedNote)} Cutoff: seasons before ${c.startSeason || 'this save'} are the historical baseline. Later seasons in the history file are not added.</div>
+  const gap = c.historicalCounting === 'season-totals'
+    ? `${c.historicalNote} ${c.source}`
+    : (c.side === 'po'
+      ? c.historicalNote
+      : `${c.historicalNote} Recorded games included: ${(c.recordedGames || 0).toLocaleString('en-US')}. Estimated seasons left out: ${(c.omittedEstimatedSeasons || 0).toLocaleString('en-US')}. Two-team seasons kept out of franchise totals: ${(c.unsplitFranchiseSeasons || 0).toLocaleString('en-US')} (${(c.unsplitFranchiseGames || 0).toLocaleString('en-US')} games).`);
+  return `<div class="card plain">${esc(c.simulatedNote)} Cutoff: seasons before ${c.startSeason || 'this save'} are the recorded baseline. Later real seasons are not added.</div>
     ${scopePills}${franSel ? `<div style="padding:0 12px 8px">${franSel}</div>` : ''}${sidePills}<div style="padding:0 12px 8px">${statSel}</div>
     <div class="card plain">${esc(gap)}${c.rateNote ? ' ' + esc(c.rateNote) : ''}${c.playersLeftOffThisStat ? ` ${c.playersLeftOffThisStat} player${c.playersLeftOffThisStat === 1 ? '' : 's'} left off this list because a season is missing that stat. Missing is not shown as zero.` : ''}${c.simulatedSeasonsWithoutTeamSplit && S.leadScope === 'franchise' ? ` ${c.simulatedSeasonsWithoutTeamSplit} simulated season${c.simulatedSeasonsWithoutTeamSplit === 1 ? '' : 's'} had no team split, so those games stay off every franchise list.` : ''}</div>
     <div class="list">${list || '<div class="it muted">Nothing qualifies for this list yet.</div>'}</div>

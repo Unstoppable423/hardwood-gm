@@ -54,7 +54,25 @@ export function startSeasonOf(L) {
 function blankSums() {
   const sum = {};
   for (const k of COUNT_KEYS) sum[k] = 0;
-  return { sum, unknown: new Set(), franchises: new Map(), simSeasons: 0 };
+  return { sum, unknown: new Set(), simSeasons: 0 };
+}
+function blankBase() {
+  const sum = {};
+  for (const k of COUNT_KEYS) sum[k] = 0;
+  return { sum, seen: new Set(), seasons: 0 };
+}
+function addKnown(bag, arr) {
+  if (!arr) return false;
+  let any = false;
+  COUNT_KEYS.forEach((k, i) => {
+    const v = arr[i];
+    if (v == null) return;
+    bag.sum[k] += +v;
+    bag.seen.add(k);
+    any = true;
+  });
+  if (any) bag.seasons += 1;
+  return any;
 }
 
 function addCounts(into, src, keys) {
@@ -132,14 +150,20 @@ function labelFor(fid, teams) {
   return { label: String(fid), abbr: String(fid), tid: null };
 }
 
-export function franchiseChoices(L, history, startSeason) {
+export function franchiseChoices(L, history, startSeason, seasons) {
   const teams = teamByFid(L);
   const ids = new Set(teams.keys());
   for (const hp of history?.players || []) {
     for (const [y, v] of Object.entries(hp.s || {})) {
-      if (+y >= startSeason) continue;
+      if (startSeason != null && +y >= startSeason) continue;
       if (v[10]) continue;
       if (v[0] && v[0] === v[1]) ids.add(v[0]);
+    }
+  }
+  for (const pl of seasons?.players || []) {
+    for (const line of pl[4] || []) {
+      if (startSeason != null && line[0] >= startSeason) continue;
+      if (line[1]) ids.add(line[1]);
     }
   }
   const rows = [...ids].map(id => ({ id, ...labelFor(id, teams) }));
@@ -154,6 +178,18 @@ function bumpFranchise(row, fid, src) {
   addCounts(bag, src, COUNT_KEYS);
 }
 
+function normName(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\./g, ' ').replace(/\b(jr|sr|ii|iii|iv)\b/g, ' ').replace(/[^a-z0-9' ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function seasonIdFor(p, seasons, season) {
+  const people = seasons?.players || [];
+  if (!people.length || season == null || p.age == null || !p.name) return null;
+  const by = season - p.age;
+  const n = normName(p.name);
+  const cands = people.filter(pl => normName(pl[0]) === n && pl[1] != null && Math.abs(pl[1] - by) <= 1);
+  if (cands.length === 1) return 'bio:' + cands[0][3];
+  return null;
+}
 function histId(hp) { return hp.k + '|' + (hp.by ?? 'x'); }
 
 function historyIdFor(p, history, season) {
@@ -179,7 +215,7 @@ function historyIdFor(p, history, season) {
 function ensure(map, id, name, pid) {
   let row = map.get(id);
   if (!row) {
-    row = { id, name, pid: pid ?? null, nba: blankSums(), byFid: new Map(), recordedNba: 0, recordedFid: new Map(), retired: false };
+    row = { id, name, pid: pid ?? null, nba: blankSums(), byFid: new Map(), baseNba: blankBase(), baseFid: new Map(), recordedNba: 0, recordedFid: new Map(), retired: false };
     map.set(id, row);
   }
   if (pid != null) row.pid = pid;
@@ -202,6 +238,7 @@ export function careerBoard(L, opts = {}) {
   const side = opts.side === 'po' ? 'po' : 'reg';
   const def = statDef(opts.stat);
   const history = opts.history || null;
+  const seasons = opts.seasons || null;
   const startSeason = opts.startSeason ?? startSeasonOf(L);
   const scope = opts.scope && opts.scope !== 'nba' ? opts.scope : 'nba';
   const teams = teamByFid(L);
@@ -211,7 +248,7 @@ export function careerBoard(L, opts = {}) {
   let seasonsMissingStat = 0;
 
   for (const p of L?.players || []) {
-    const row = ensure(people, historyIdFor(p, history, startSeason), p.name, p.pid);
+    const row = ensure(people, (seasons && seasonIdFor(p, seasons, startSeason)) || historyIdFor(p, history, startSeason), p.name, p.pid);
     if (p.retired) row.retired = true;
     const seen = new Set();
     for (const c of p.career || []) {
@@ -250,11 +287,33 @@ export function careerBoard(L, opts = {}) {
     }
   }
 
+  let baselineLines = 0;
+  if (seasons?.players && startSeason != null) {
+    for (const pl of seasons.players) {
+      const [name, , , id, lines] = pl;
+      let row = null;
+      for (const line of lines || []) {
+        const [year, fid, reg, post] = line;
+        if (year >= startSeason) continue;
+        const arr = side === 'po' ? post : reg;
+        if (!arr) continue;
+        if (!row) row = ensure(people, 'bio:' + id, name, null);
+        addKnown(row.baseNba, arr);
+        if (fid) {
+          let b = row.baseFid.get(fid);
+          if (!b) { b = blankBase(); row.baseFid.set(fid, b); }
+          addKnown(b, arr);
+        }
+        baselineLines += 1;
+      }
+    }
+  }
+
   let recordedGames = 0;
   let omittedEstimated = 0;
   let omittedTwoTeam = 0;
   let twoTeamGames = 0;
-  if (side === 'reg' && history?.players && startSeason != null) {
+  if (!seasons && side === 'reg' && history?.players && startSeason != null) {
     for (const hp of history.players) {
       let nbaGp = 0;
       const fidGp = new Map();
@@ -277,34 +336,42 @@ export function careerBoard(L, opts = {}) {
     }
   }
 
+  const basePart = (row, key) => {
+    const bag = scope === 'nba' ? row.baseNba : row.baseFid.get(scope);
+    if (!bag || !bag.seen.has(key)) return null;
+    return bag.sum[key];
+  };
+  const simPart = (row, key) => {
+    const bag = scope === 'nba' ? row.nba : row.byFid.get(scope);
+    if (!bag) return null;
+    if (bag.unknown.has(key)) return undefined;
+    if (scope === 'nba' && !bag.simSeasons) return null;
+    return bag.sum[key];
+  };
   const rows = [];
   for (const row of people.values()) {
-    const bag = scope === 'nba' ? row.nba : row.byFid.get(scope);
-    const recorded = scope === 'nba' ? row.recordedNba : (row.recordedFid.get(scope) || 0);
-    const simulatedKnown = bag && !bag.unknown.has(def.kind === 'rate' ? def.make : def.id) && !bag.unknown.has(def.kind === 'rate' ? def.att : def.id);
-    if (bag && def.kind === 'count' && bag.unknown.has(def.id)) seasonsMissingStat += 1;
-    let value = null;
+    const legacyRecorded = !seasons && def.id === 'gp' && side === 'reg' ? (scope === 'nba' ? row.recordedNba : (row.recordedFid.get(scope) || 0)) : 0;
+    let recorded = seasons ? basePart(row, def.kind === 'rate' ? def.make : def.id) : (legacyRecorded || null);
     let simulated = null;
-    let partial = false;
+    let value = null;
     if (def.kind === 'rate') {
-      if (!simulatedKnown) continue;
-      const att = bag.sum[def.att];
-      const make = bag.sum[def.make];
+      const makeS = simPart(row, def.make);
+      const attS = simPart(row, def.att);
+      if (makeS === undefined || attS === undefined) { seasonsMissingStat += 1; continue; }
+      const make = (basePart(row, def.make) || 0) + (makeS || 0);
+      const att = (basePart(row, def.att) || 0) + (attS || 0);
       if (!(att >= def.minAtt)) continue;
       value = make / att;
-      simulated = value;
-    } else if (def.id === 'gp') {
-      simulated = simulatedKnown ? bag.sum.gp : (bag && bag.unknown.has('gp') ? null : 0);
-      if (bag && bag.unknown.has('gp')) partial = true;
-      const rec = side === 'reg' ? recorded : 0;
-      if (partial) continue;
-      value = (simulated || 0) + rec;
-      if (!(value > 0)) continue;
+      simulated = attS ? makeS / attS : null;
+      recorded = basePart(row, def.att) ? (basePart(row, def.make) || 0) / basePart(row, def.att) : null;
     } else {
-      if (!simulatedKnown) { partial = true; continue; }
-      simulated = bag ? bag.sum[def.id] : 0;
-      value = simulated;
-      if (!(value > 0)) continue;
+      const sim = simPart(row, def.id);
+      if (sim === undefined) { seasonsMissingStat += 1; continue; }
+      simulated = sim;
+      if (!seasons && def.id === 'gp') recorded = legacyRecorded || null;
+      const total = (recorded || 0) + (simulated || 0);
+      if (!(total > 0)) continue;
+      value = total;
     }
     const where = scope === 'nba' ? null : labelFor(scope, teams);
     rows.push({
@@ -314,7 +381,7 @@ export function careerBoard(L, opts = {}) {
       retired: row.retired,
       value,
       simulated,
-      recorded: def.id === 'gp' && side === 'reg' ? recorded : null,
+      recorded: def.kind === 'rate' ? null : (recorded || null),
       tid: where?.tid ?? null,
       team: where?.label || '',
       abbr: where?.abbr || '',
@@ -337,8 +404,10 @@ export function careerBoard(L, opts = {}) {
     scope,
     startSeason,
     simulatedNote: SIM_NOTE,
-    historicalCounting: def.id === 'gp' && side === 'reg' ? 'games-only' : 'unavailable',
-    historicalNote: side === 'po' ? PLAYOFF_HISTORY_NOTE : HISTORICAL_COUNTING_NOTE,
+    historicalCounting: seasons ? 'season-totals' : (def.id === 'gp' && side === 'reg' ? 'games-only' : 'unavailable'),
+    historicalNote: seasons
+      ? `Totals before ${startSeason} are sums of completed NBA and BAA seasons. ${seasons.trackedFrom?.[def.id] ? def.label + ' starts in ' + (seasons.trackedFrom[def.id] - 1) + '-' + String(seasons.trackedFrom[def.id]).slice(-2) + '. Earlier seasons are omitted, not stored as zero.' : def.label + ' is in the season file from the first NBA season.'} Games this save simulates are added after that cutoff and are not replaced with a real later season.`
+      : (side === 'po' ? PLAYOFF_HISTORY_NOTE : HISTORICAL_COUNTING_NOTE),
     recordedGames: side === 'reg' ? recordedGames : 0,
     omittedEstimatedSeasons: side === 'reg' ? omittedEstimated : 0,
     unsplitFranchiseSeasons: omittedTwoTeam,
@@ -347,7 +416,9 @@ export function careerBoard(L, opts = {}) {
     playersLeftOffThisStat: seasonsMissingStat,
     rateMin: rate ? def.minAtt : null,
     rateNote: rate ? `${def.label} is makes divided by attempts in this save, and only players with at least ${def.minAtt} attempts are listed. It is not an average of season percentages.` : '',
-    source: history?.source || 'data/history.json was not loaded, so recorded games before this save are omitted.',
+    baselineLines,
+    trackedFrom: seasons?.trackedFrom || null,
+    source: seasons?.source || history?.source || 'No season-total file was loaded, so counting totals from before this save are omitted.',
   };
-  return { rows, coverage, franchises: franchiseChoices(L, history, startSeason) };
+  return { rows, coverage, franchises: franchiseChoices(L, seasons ? null : history, startSeason, seasons) };
 }

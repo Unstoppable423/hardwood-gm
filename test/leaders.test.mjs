@@ -209,6 +209,111 @@ test('stint notes follow the team that played the game, and a relocation keeps t
   assert.equal(startSeasonOf({ season: 2004, history: [{ season: 1998 }], players: [{ career: [{ season: 1997 }] }] }), 1997);
 });
 
+const tinySeasons = {
+  trackedFrom: { reb: 1951, stl: 1974, tpm: 1980, tpa: 1980 },
+  source: 'fixture',
+  players: [
+    ['Michael Jordan', 1963, 2, 'jordami01', [
+      [1985, 'CHI', [82, 2400, 2313, 800, 1600, 9, 20, 630, 700, 100, 300, 400, 400, 150, 30, 100], [4, 100, 117, 40, 80, 1, 2, 20, 25, 5, 15, 20, 20, 8, 2, 10]],
+      [1997, 'CHI', [82, 3106, 2431, 920, 1892, 111, 297, 480, 576, 113, 369, 482, 352, 140, 44, 166], [19, 800, 590, 200, 400, 13, 40, 123, 150, 30, 90, 120, 91, 30, 5, 40]],
+    ]],
+    ['Joe Fulks', 1921, 10, 'fulksjo01', [
+      [1947, 'GSW', [60, null, 1389, 475, 1557, null, null, 439, 601, null, null, null, 25, null, null, null], null],
+    ]],
+    ['Split Guy', 1950, 1, 'split01', [
+      [1980, 'BOS', [40, 1000, 400, 150, 300, 10, 30, 90, 100, 20, 80, 100, 50, 20, 5, 30], null],
+      [1980, 'NYK', [30, 800, 250, 100, 200, 5, 15, 40, 50, 10, 40, 50, 20, 10, 2, 15], null],
+    ]],
+  ],
+};
+const emptyLeague = (season) => ({ season, teams: [{ tid: 0, fid: 'CHI', abbr: 'CHI', city: 'Chicago', name: 'Bulls' }, { tid: 1, fid: 'BOS', abbr: 'BOS', city: 'Boston', name: 'Celtics' }, { tid: 2, fid: 'NYK', abbr: 'NYK', city: 'New York', name: 'Knicks' }], players: [] });
+
+test('season totals stop at the save start, split stints, and do not treat untracked stats as zero', () => {
+  const before = snap(tinySeasons);
+  const pts97 = careerBoard(emptyLeague(1997), { seasons: tinySeasons, stat: 'pts' });
+  assert.equal(pts97.rows.find(r => r.name === 'Michael Jordan').value, 2313);
+  const pts98 = careerBoard(emptyLeague(1998), { seasons: tinySeasons, stat: 'pts' });
+  assert.equal(pts98.rows.find(r => r.name === 'Michael Jordan').value, 2313 + 2431);
+  const po97 = careerBoard(emptyLeague(1997), { seasons: tinySeasons, stat: 'pts', side: 'po' });
+  assert.equal(po97.rows.find(r => r.name === 'Michael Jordan').value, 117);
+  const po98 = careerBoard(emptyLeague(1998), { seasons: tinySeasons, stat: 'pts', side: 'po' });
+  assert.equal(po98.rows.find(r => r.name === 'Michael Jordan').value, 117 + 590);
+  assert.equal(careerBoard(emptyLeague(1985), { seasons: tinySeasons, stat: 'pts' }).rows.find(r => r.name === 'Michael Jordan'), undefined);
+  const fulks = careerBoard(emptyLeague(1948), { seasons: tinySeasons, stat: 'pts' });
+  assert.equal(fulks.rows.find(r => r.name === 'Joe Fulks').value, 1389);
+  assert.equal(careerBoard(emptyLeague(1948), { seasons: tinySeasons, stat: 'reb' }).rows.find(r => r.name === 'Joe Fulks'), undefined);
+  assert.equal(careerBoard(emptyLeague(1948), { seasons: tinySeasons, stat: 'tpm' }).rows.find(r => r.name === 'Joe Fulks'), undefined);
+  const nba = careerBoard(emptyLeague(1981), { seasons: tinySeasons, stat: 'pts' });
+  assert.equal(nba.rows.find(r => r.name === 'Split Guy').value, 650);
+  assert.equal(careerBoard(emptyLeague(1981), { seasons: tinySeasons, stat: 'pts', scope: 'BOS' }).rows.find(r => r.name === 'Split Guy').value, 400);
+  assert.equal(careerBoard(emptyLeague(1981), { seasons: tinySeasons, stat: 'pts', scope: 'NYK' }).rows.find(r => r.name === 'Split Guy').value, 250);
+  const live = careerBoard({
+    season: 1997,
+    teams: emptyLeague(1997).teams,
+    players: [player({ pid: 8, name: 'Michael Jordan', age: 34, career: [{ season: 1997, gp: 2, pts: 50, reb: 6, ast: 8, min: 70, fgm: 20, fga: 40, tpm: 2, tpa: 5, ftm: 8, fta: 10, orb: 2, drb: 4, stl: 3, blk: 1, tov: 4, stints: [{ tid: 0, side: 'reg', gp: 2, pts: 50, reb: 6, ast: 8, min: 70, fgm: 20, fga: 40, tpm: 2, tpa: 5, ftm: 8, fta: 10, orb: 2, drb: 4, stl: 3, blk: 1, tov: 4 }] }] })],
+  }, { seasons: tinySeasons, stat: 'pts' });
+  const mj = live.rows.find(r => r.name === 'Michael Jordan');
+  assert.equal(mj.pid, 8);
+  assert.equal(mj.recorded, 2313);
+  assert.equal(mj.simulated, 50);
+  assert.equal(mj.value, 2363);
+  assert.equal(snap(tinySeasons), before);
+});
+
+test('the shipped season file matches published totals and every cutoff stays inside completed seasons', () => {
+  const seasons = JSON.parse(readFileSync(new URL('../data/season-totals.json', import.meta.url)));
+  const idx = Object.fromEntries(seasons.keys.map((k, i) => [k, i]));
+  const sum = (start, key, fid, side = 2) => {
+    let n = 0;
+    for (const p of seasons.players) for (const ln of p[4]) {
+      if (ln[0] >= start) continue;
+      if (fid && ln[1] !== fid) continue;
+      const arr = side === 3 ? ln[3] : ln[2];
+      if (!arr || arr[idx[key]] == null) continue;
+      n += arr[idx[key]];
+    }
+    return n;
+  };
+  const board = (start, stat, scope = 'nba', side = 'reg') => careerBoard({
+    season: start,
+    teams: [
+      { tid: 0, fid: 'LAL', abbr: 'LAL', city: 'Los Angeles', name: 'Lakers' },
+      { tid: 1, fid: 'CHI', abbr: 'CHI', city: 'Chicago', name: 'Bulls' },
+      { tid: 2, fid: 'GSW', abbr: 'GSW', city: 'Golden State', name: 'Warriors' },
+    ],
+    players: [],
+  }, { seasons, startSeason: start, stat, scope, side });
+  const kareem = board(1997, 'pts').rows.find(r => r.name === 'Kareem Abdul-Jabbar');
+  assert.equal(kareem.value, 38387);
+  const jordan97 = board(1997, 'pts').rows.find(r => r.name === 'Michael Jordan').value;
+  const jordan98 = board(1998, 'pts').rows.find(r => r.name === 'Michael Jordan').value;
+  assert.equal(jordan98 - jordan97, 2431);
+  assert.equal(board(1985, 'pts').rows.find(r => r.name === 'Michael Jordan'), undefined);
+  const wilt = seasons.players.find(p => p[3] === 'chambwi01');
+  const wilt62 = wilt[4].find(ln => ln[0] === 1962);
+  assert.equal(wilt62[2][idx.pts], 4029);
+  assert.equal(board(1963, 'pts').rows.find(r => r.name === 'Wilt Chamberlain').value - board(1962, 'pts').rows.find(r => r.name === 'Wilt Chamberlain').value, 4029);
+  const fulks = seasons.players.find(p => p[3] === 'fulksjo01');
+  assert.equal(fulks[4].find(ln => ln[0] === 1947)[2][idx.reb], null);
+  assert.equal(fulks[4].find(ln => ln[0] === 1947)[2][idx.tpm], null);
+  assert.equal(board(1974, 'stl').rows.length, 0);
+  assert.ok(board(1975, 'stl').rows[0].value > 0);
+  assert.equal(board(1980, 'tpm').rows.length, 0);
+  assert.ok(board(1981, 'tpm').rows[0].value > 0);
+  for (const start of [1948, 1960, 1974, 1980, 1990, 1997]) {
+    const listed = board(start, 'pts').rows.reduce((a, r) => a + r.value, 0);
+    assert.equal(listed, sum(start, 'pts'));
+    const lakers = board(start, 'pts', 'LAL').rows.reduce((a, r) => a + r.value, 0);
+    assert.equal(lakers, sum(start, 'pts', 'LAL'));
+    const ftm = board(start, 'ftm').rows.reduce((a, r) => a + r.value, 0);
+    assert.equal(ftm, sum(start, 'ftm'));
+    assert.equal(board(start, 'stl').rows.some(r => r.value === 0), false);
+  }
+  const po = board(1998, 'pts', 'nba', 'po').rows.find(r => r.name === 'Michael Jordan').value;
+  const poPrev = board(1997, 'pts', 'nba', 'po').rows.find(r => r.name === 'Michael Jordan').value;
+  assert.equal(po - poPrev, 590);
+});
+
 test('the shipped history file is per-game, so a 1980 cutoff does not import Jordan\'s later points', () => {
   const history = JSON.parse(readFileSync(new URL('../data/history.json', import.meta.url)));
   const mj = history.players.find(p => p.n === 'Michael Jordan');
