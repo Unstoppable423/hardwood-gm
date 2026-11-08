@@ -166,12 +166,19 @@ export function sign(L, p, tid, amt, years, extra = {}) {
 }
 // contracts signed between AWARDS and RESIGN (e.g. draft) belong to the next league year
 export function isOffseasonBeforeNewYear(L) { return ['AWARDS', 'STAFF', 'LOTTERY', 'DRAFT'].includes(L.phase); }
+// What a release does to the cap. A non-guaranteed (ng) deal adds no dead money outside the
+// regular season and playoffs. A guaranteed deal keeps its current yearly salary through its end year.
+export function releaseConsequence(L, p) {
+  const ng = !!p.contract?.ng;
+  const waivedFree = ng && L.phase !== 'REGULAR' && L.phase !== 'PLAYOFFS';
+  const yrsLeft = p.contract ? p.contract.exp - L.season + 1 : 0;
+  const dead = !!(p.contract && !waivedFree && yrsLeft > 0);
+  return { dead, ng, amt: dead ? p.contract.amt : 0, exp: dead ? p.contract.exp : null };
+}
 export function release(L, p, auto = false) {
-  const free = p.contract?.ng && (L.phase !== 'REGULAR' && L.phase !== 'PLAYOFFS');
-  if (p.contract && !free) {
-    const yrsLeft = p.contract.exp - L.season + 1;
-    if (yrsLeft > 0) L.deadMoney.push({ tid: p.tid, amt: p.contract.amt, exp: p.contract.exp, name: p.name });
-  }
+  if (!p || p.tid < 0) return;
+  const hit = releaseConsequence(L, p);
+  if (hit.dead) L.deadMoney.push({ tid: p.tid, amt: hit.amt, exp: hit.exp, name: p.name });
   logTx(L, { type: 'release', text: `${L.teams[p.tid].abbr} released ${p.name}` }, [p.pid]);
   if (p.tid === L.userTid && !auto) news(L, `${L.teams[p.tid].abbr} waive ${p.name}.`, 'transaction', p.tid);
   p.formerTid = p.tid; p.tid = -1; p.contract = null;

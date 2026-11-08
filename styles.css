@@ -243,6 +243,9 @@ html{scroll-padding-top:56px;scroll-padding-bottom:calc(var(--ctaH,0px) + env(sa
    the bottom of the layout viewport. */
 #ctaDock{position:fixed;left:50%;bottom:var(--vvGap,0px);transform:translateX(-50%);width:100%;max-width:520px;z-index:12}
 #ctaDock .cta{position:relative;left:auto;right:auto;top:auto;bottom:auto;transform:none;width:100%;max-width:none}
+.cta.wrap{flex-wrap:wrap}
+.cta.wrap button{flex:1 1 calc(50% - 8px)}
+#releaseAsk{z-index:55}
 label.filebtn{position:relative;overflow:hidden;cursor:pointer}
 label.filebtn input[type=file]{position:absolute;inset:0;opacity:0;width:100%;height:100%;font-size:16px;cursor:pointer}
 label.filebtn.sm{display:inline-flex;align-items:center;justify-content:center;min-height:40px;min-width:40px;padding:6px 10px;font-size:13px;border-radius:7px;background:var(--chip);color:var(--ink)}

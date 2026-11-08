@@ -135,7 +135,7 @@ function render() {
   else if (S.view === 'pickteam') app.innerHTML = pickTeamView();
   else if (S.view === 'preview') app.innerHTML = previewView();
   else app.innerHTML = shellView();
-  renderDrawer(); renderModal(); placeCta();
+  renderDrawer(); renderModal(); renderReleaseAsk(); placeCta();
 }
 // The action bar is rendered inside #app, but #app is a transformed scroller.
 // A transformed ancestor is the containing block for position:fixed, so the
@@ -277,7 +277,7 @@ function shellView() {
   const pg0 = S.page; const fn = PAGES[pg0.n] || PAGES.home;
   const v = fn(pg0) || {};
   const ctl = S.L && E.isControlling(S.L) ? `<div class="ctlbar" style="background:${T(S.L.userTid).c1}"><span>Controlling <b>${esc(T(S.L.userTid).abbr)}</b></span><button class="sm" data-a="ctlHome">Back to ${esc(T(E.homeTid(S.L)).abbr)}</button></div>` : '';
-  return hdr(v.title || '', v.right || '') + ctl + (v.top || '') + `<div class="wrap">${v.body || ''}</div>` + (v.cta ? `<div class="cta">${v.cta}</div>` : '');
+  return hdr(v.title || '', v.right || '') + ctl + (v.top || '') + `<div class="wrap">${v.body || ''}</div>` + (v.cta ? `<div class="cta${v.ctaWrap ? ' wrap' : ''}">${v.cta}</div>` : '');
 }
 const MENU = [['home', 'home', 'Home'], ['team', 'jersey', 'My Team'], ['trade', 'trade', 'Trade Center'], ['fa', 'pen', 'Free Agents'], ['draft', 'cap', 'Draft'], ['league', 'trophy', 'League'],
   ['world', 'globe', 'World'], ['gm', 'tie', 'GM'], ['messages', 'mail', 'Messages'], ['settings', 'gear', 'Settings']];
@@ -412,7 +412,8 @@ function playerRow(p, opts = {}) {
   const L = S.L; const inj = (p.il ? '<span class="iltag">IL</span> ' : '') + (p.injury ? `<span class="inj">${injIcon()} ${Math.ceil(p.injury.games)}g</span>` : '');
   const yl = yrsLeft(p); const blk = (L.tradeBlock || []).includes(p.pid) ? ' <span class="tag" style="background:var(--gold)">BLOCK</span>' : '';
   const delta = p.prevOvr != null && p.ovr !== p.prevOvr ? `<span class="${p.ovr > p.prevOvr ? 'up' : 'dn'}">${p.ovr > p.prevOvr ? '↑' : '↓'}${Math.max(1, Math.abs(R(p.ovr) - R(p.prevOvr)))}</span>` : '';
-  return `<div class="it" data-a="${opts.act || 'player'}" data-pid="${p.pid}">${avatar(p, 42)}
+  const rowAct = opts.act === 'noop' ? '' : ` data-a="${opts.act || 'player'}" data-pid="${p.pid}"`;
+  return `<div class="it"${rowAct}>${avatar(p, 42)}
    <div class="grow"><div class="nm">${esc(p.name)}${blk} ${inj}</div><div class="meta">${opts.meta ?? `${E.posLabel(p)} · ${yrsPro(p) ? `EXP ${yrsPro(p)} yrs` : 'Rookie'} · ${p.contract ? `${M(p.contract.amt)} · ${yl} yr${yl === 1 ? '' : 's'}` : 'No contract'}`}</div></div>
    ${opts.extra || ''}<div class="rt">${hideR(p) ? sq(null) : sq(p.ovr)}<div class="dw">${delta} ${devWord(p)}</div></div></div>`;
 }
@@ -559,7 +560,7 @@ PAGES.player = (pg0) => {
   if (p.tid >= 0 && !own && L.phase !== 'PLAYOFFS') acts.push(`<button class="blue" data-a="tradeFor" data-pid="${p.pid}">Trade For</button>`);
   if (p.tid === -2 && L.phase === 'DRAFT' && L.draft.order[L.draft.idx] && E.draftControls(L, L.draft.order[L.draft.idx].tid) && p.draft?.year === L.season) acts.push(`<button class="go" data-a="draftPick" data-pid="${p.pid}">Draft</button>`);
   const editBtn = `<button class="rb" data-a="edit" data-pid="${p.pid}" aria-label="Edit player">${icon('pen', { s: 22 })}</button>`;
-  return { title: 'Player', right: (p.tid === -2 ? `<button class="rb" data-a="short" data-pid="${p.pid}" aria-label="Shortlist">${starSvg(shortl ? 'full' : 'empty', 24)}</button>` : '') + editBtn, top, body, cta: acts.slice(0, 3).join('') };
+  return { title: 'Player', right: (p.tid === -2 ? `<button class="rb" data-a="short" data-pid="${p.pid}" aria-label="Shortlist">${starSvg(shortl ? 'full' : 'empty', 24)}</button>` : '') + editBtn, top, body, cta: acts.join(''), ctaWrap: acts.length > 3 };
 };
 function skillsTab(p) {
   const R = p.ratings; const hid = hideR(p); const prev = p.prevRatings;
@@ -1179,6 +1180,21 @@ function returnFAModal() {
   ${yoursFull.length ? `<div class="muted" style="padding:8px 14px">${yours.length ? `${yoursFull.length} more of your former players ${yoursFull.length === 1 ? 'does' : 'do'} not fit after those ${yours.length} return.` : `Your roster is already full (${userN}/${E.ROSTER_MAX}), so your former players stay free agents until you clear a spot.`} Nobody is released to make room.</div>` : ''}
   <div class="grid2" style="margin-top:12px"><button style="min-height:44px" data-a="close">Cancel</button><button class="go" style="min-height:44px" data-a="returnFAGo" ${n ? '' : 'disabled'}>Return ${n}</button></div></div>`;
 }
+function releaseNote(L, p) {
+  const c = E.releaseConsequence(L, p);
+  if (c.dead) return `His remaining salary (${M(c.amt)}/yr through ${c.exp}) stays on your cap.`;
+  if (c.ng) return 'This deal is non-guaranteed in the offseason, so nothing is added to your cap.';
+  return 'No salary is added to your cap.';
+}
+function renderReleaseAsk() {
+  let el = document.getElementById('releaseAsk');
+  const ask = S.releaseAsk;
+  const L = S.L, p = ask && L ? E.getP(L, ask.pid) : null;
+  if (!p || p.tid !== L.userTid) { S.releaseAsk = null; el?.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'releaseAsk'; el.className = 'modal'; el.dataset.a = 'releaseCancel'; document.body.appendChild(el); }
+  el.innerHTML = `<div class="sheet" data-a="noop"><div class="sh"><div><div style="font-weight:800">Release ${esc(p.name)}</div><div style="font-size:12px;opacity:.85">${esc(p.pos)} · ${p.contract ? M(p.contract.amt) + '/yr' : 'no contract'}</div></div><button class="x sm" data-a="releaseCancel" aria-label="Cancel release">${icon('close', { s: 18 })}</button></div><div class="wrap"><div class="card">${releaseNote(L, p)} He becomes a free agent. No one else is cut.</div>
+  <div class="grid2"><button style="min-height:44px" data-a="releaseCancel">Cancel</button><button class="red" style="min-height:44px" data-a="releaseDo">Release ${esc(p.name.split(' ').slice(-1)[0])}</button></div></div></div>`;
+}
 function modalView() { return ({ offers: offersModal, signTo: signToModal, offer: offerModal, holiday: holidayModal, cut: cutModal, draftTeam: draftTeamModal, returnFA: returnFAModal }[S.modal.type] || (() => ''))(); }
 const structOK = (L, kind) => kind !== 'ext' && !(L.phase === 'REGULAR' && kind === 'fa');
 function offersModal() {
@@ -1223,7 +1239,7 @@ function holidayModal() {
 function cutModal() {
   const L = S.L; const ps = E.teamPlayers(L, L.userTid).sort((a, b) => a.ovr - b.ovr); const over = ps.length - 15;
   return sheetHead('Roster over the limit', `${ps.length} players · max 15`) + `<div class="wrap"><div class="card">You must release ${over} player(s) before the season starts. Released guaranteed salary stays on your cap.</div>
-  <div class="list">${ps.map(p => playerRow(p, { act: 'noop', extra: `<button class="sm red" data-a="release" data-pid="${p.pid}">Cut</button>` })).join('')}</div>
+  <div class="list">${ps.map(p => playerRow(p, { act: 'noop', extra: `<button class="sm red" style="min-height:44px;min-width:72px" data-a="release" data-pid="${p.pid}">Cut</button>` })).join('')}</div>
   <button class="go" style="width:calc(100% - 20px);margin:10px" data-a="autoCut">Auto-cut and start</button></div>`;
 }
 
@@ -1464,9 +1480,25 @@ const A = {
   },
   ilPlace(d) { const r = E.placeIL(S.L, +d.pid); if (!r.ok) return toast(r.error); toast('Moved to the injured list. That opens a roster spot.'); autosave(); render(); },
   ilAct(d) { const r = E.activateIL(S.L, +d.pid); if (!r.ok) return toast(r.error); toast('Activated.'); autosave(); render(); },
-  release(d) { const p = E.getP(S.L, +d.pid); const g = p.contract && !(p.contract.ng && S.L.phase !== 'REGULAR'); if (!confirm(`Release ${p.name}?${g ? ` His remaining salary (${M(p.contract.amt)}/yr through ${p.contract.exp}) stays on your cap.` : ''}`)) return; E.release(S.L, p);
-    if (S.modal?.type === 'cut') { if (E.teamPlayers(S.L, S.L.userTid).length <= E.ROSTER_MAX) S.modal = null; autosave(); render(); return; }
-    if (S.page.n === 'player') S.page = S.stack.pop() || { n: 'team' }; autosave(); render(); },
+  release(d) {
+    const L = S.L, p = E.getP(L, +d.pid);
+    if (!p || p.tid !== L.userTid) return toast('Only a player on your team can be released.');
+    if (L.phase === 'PLAYOFFS') return toast('Players cannot be released during the playoffs.');
+    S.releaseAsk = { pid: p.pid }; renderReleaseAsk();
+  },
+  releaseCancel() { S.releaseAsk = null; renderReleaseAsk(); },
+  releaseDo() {
+    if (S.releaseBusy || !S.releaseAsk) return;
+    const L = S.L, pid = S.releaseAsk.pid, p = E.getP(L, pid);
+    S.releaseAsk = null; S.releaseBusy = true; renderReleaseAsk();
+    if (!p || p.tid !== L.userTid) { S.releaseBusy = false; return toast('That player is no longer on your team.'); }
+    const name = p.name;
+    E.release(L, p);
+    S.releaseBusy = false;
+    if (S.modal?.type === 'cut') { if (E.teamPlayers(L, L.userTid).length <= E.ROSTER_MAX) { S.modal = null; renderModal(); } else renderModal(); }
+    else if (S.page.n === 'player') S.page = S.stack.pop() || { n: 'team' };
+    autosave(); render(); toast(`${name} released.`);
+  },
   autoCut() { const cut = E.autoCut(S.L); S.modal = null; if (cut.length) toast('Released: ' + cut.join(', '), 3500); autosave(); render(); },
   tradeFor(d) { const p = E.getP(S.L, +d.pid); S.trade = { tid: p.tid, a: [], ap: [], b: [p.pid], bp: [] }; S.tab.trade = 'machine'; root('trade'); },
   tAddSuggest(d) { const tr = S.trade; if (d.kind === 'p') tr.a.push(+d.id); else tr.ap.push(d.id); render(); },
