@@ -287,6 +287,8 @@ PAGES.home = () => {
     case 'FA1': case 'FA2': case 'FA3': parts.push(faCard(L)); cta.push(`<button class="blue" data-a="nav" data-p="fa">Free Agents</button>`, `<button class="go" data-a="advance">${L.phase === 'FA3' ? 'End Free Agency' : 'Next Week'}</button>`); break;
     case 'SUMMER': parts.push(summerCard(L)); cta.push(`<button class="go" data-a="advance">Preseason</button>`); break;
   }
+  if (L.phase === 'REGULAR') { const db = E.deadlineBoard(L); const sellers = db.teams.filter(t => t.side === 'seller').length;
+    parts.push(`<div class="card" data-a="nav" data-p="trade" data-t="deadline"><h3>Trade deadline</h3><div class="plain">${esc(db.note)}</div><div class="muted">${sellers} clear seller${sellers === 1 ? '' : 's'}. Nothing is offered from this card.</div></div>`); }
   const story = E.seasonStorylines(L); const lead = story.items[0];
   parts.push(`<div class="card" data-a="nav" data-p="league" data-t="stories"><h3>Season storylines</h3><div style="font-weight:700">${esc(lead.title)}</div><div class="plain">${esc(lead.text)}</div><div class="muted">Meetings, the playoff race, breakouts, and big trades.</div></div>`);
   const nw = L.news.slice(0, 4);
@@ -517,7 +519,8 @@ function skillsTab(p) {
   const at = (k) => { const v = hid ? null : R[k]; const d = prev && !hid && prev[k] != null ? R[k] - prev[k] : 0; return `<div class="at"><span class="grow">${E.ATTR_LABEL[k]}</span>${d ? `<span class="${d > 0 ? 'up' : 'dn'}" style="margin-right:4px">${d > 0 ? '↑' : '↓'}${Math.abs(d)}</span>` : ''}${sq(v)}</div>`; };
   const roles = hid ? [] : E.roleRatings(p);
   const pen = E.posPenalty(p);
-  return `${p.tid === S.L.userTid ? `<div class="sect">Position</div><div class="pill-seg">${E.POS.map(pos => `<button class="${p.pos === pos ? 'on' : ''}" data-a="chgPos" data-pid="${p.pid}" data-pos="${pos}">${pos}</button>`).join('')}</div>` : ''}
+  const scout = p.tid === -2 ? (() => { const r = E.scoutReport(p, { draftYear: p.draft?.year ?? null, hidden: hid, careers: S.L.settings?.careers || 'real' }); return `<div class="sect">Scout note</div><div class="card">${r.lines.map(l => `<div class="plain" style="padding:4px 0">${esc(l)}</div>`).join('')}</div>`; })() : '';
+  return `${scout}${p.tid === S.L.userTid ? `<div class="sect">Position</div><div class="pill-seg">${E.POS.map(pos => `<button class="${p.pos === pos ? 'on' : ''}" data-a="chgPos" data-pid="${p.pid}" data-pos="${pos}">${pos}</button>`).join('')}</div>` : ''}
   ${roles.length ? `<div class="roles">${roles.map(([n, v]) => `<div><div class="muted">${n}</div>${sq(v, 'big')}</div>`).join('')}</div>` : ''}
   ${p.tid >= 0 && T(p.tid).staff?.HC && !hid ? (() => { const hc = T(p.tid).staff.HC, f = E.playerFit(p, hc.off, hc.def); return `<div class="card fitline">Scheme fit · <b>${esc(hc.off)}</b> <span class="fitw ${E.fitWord(f.off).toLowerCase()}">${E.fitWord(f.off)}</span> · <b>${esc(hc.def)}</b> <span class="fitw ${E.fitWord(f.def).toLowerCase()}">${E.fitWord(f.def)}</span></div>`; })() : ''}
   ${pen ? `<div class="card" style="color:var(--q1)">Playing out of position (natural ${p.natPos}). Adaptability ${p.adapt ?? 50} — penalty −${pen} OVR, shrinking each offseason.</div>` : ''}
@@ -627,7 +630,7 @@ function descOffer(L, o) {
 }
 PAGES.trade = () => {
   const L = S.L; const tb = curTab('trade', 'offers'); const offers = L.tradeOffers || [];
-  const top = tabs('trade', [['offers', `Offers${offers.length ? ' (' + offers.length + ')' : ''}`], ['block', 'Trade Block'], ['machine', 'Propose'], ['commish', 'Commissioner'], ['all', 'All Players']], 'offers');
+  const top = tabs('trade', [['offers', `Offers${offers.length ? ' (' + offers.length + ')' : ''}`], ['deadline', 'Deadline'], ['block', 'Trade Block'], ['machine', 'Propose'], ['commish', 'Commissioner'], ['all', 'All Players']], 'offers');
   let body = '';
   const closed = !tradeOpen(L) ? `<div class="card" style="color:var(--q1)">${L.phase === 'PLAYOFFS' ? 'Trades are closed during the playoffs.' : 'The trade deadline has passed. Trades reopen after the season.'}</div>` : '';
   if (tb === 'offers') {
@@ -639,7 +642,8 @@ PAGES.trade = () => {
       : `<div class="card muted">No trade offers. Put players on your Trade Block and AI teams that need them — usually contenders — will call with offers. Offers expire after two weeks or at the deadline.</div>`);
     const tx = L.transactions.filter(t => t.type === 'trade').slice(0, 10);
     body += `<div class="sect">Recent league trades</div><div class="list">${tx.map(t => `<div class="it" style="font-size:13px">${esc(t.text)}</div>`).join('') || '<div class="it muted">None yet.</div>'}</div>`;
-  } else if (tb === 'commish') {
+  } else if (tb === 'deadline') body = deadlineTab(L);
+  else if (tb === 'commish') {
     let ct = S.ct; if (!ct || !ct.teams) ct = S.ct = { teams: [L.userTid, teamsAZ(L).find(t => t.tid !== L.userTid).tid], mv: {} };
     const nT = ct.teams.length; const destOf = (key) => ct.mv[key];
     const teamSel = (i) => `<div class="row" style="gap:6px"><select data-ctt="${i}" aria-label="Team ${i + 1}" style="flex:1">${teamsAZ(L).map(t => `<option value="${t.tid}" ${ct.teams[i] === t.tid ? 'selected' : ''}>${esc(t.city + ' ' + t.name)}</option>`).join('')}</select>${nT > 2 ? `<button class="sm ghost" data-a="ctDel" data-i="${i}" aria-label="Remove team">✕</button>` : ''}</div>`;
@@ -661,6 +665,13 @@ PAGES.trade = () => {
   else body = allPlayers(L);
   return { title: 'Trade Center', top, body };
 };
+function deadlineTab(L) {
+  const b = E.deadlineBoard(L);
+  const chip = (side) => side === 'buyer' ? 'tg' : side === 'seller' ? 'tr' : '';
+  const teams = b.teams.map(t => `<div class="it"><div class="grow"><div class="nm">${esc(T(t.tid).city)} ${esc(T(t.tid).name)} <b class="${chip(t.side)}">${t.side}</b></div><div class="plain">${esc(t.why)}</div></div></div>`).join('');
+  const ops = b.open ? (b.opportunities.length ? b.opportunities.map(o => `<div class="card"><div class="nm">${esc(o.name)} · ${o.pos} ${o.ovr ?? ''}</div><div class="plain">${esc(o.why)}</div><button class="blue" style="width:100%;margin-top:8px" data-a="deadlineOpen" data-tid="${o.tid}" data-pid="${o.pid}">Open proposal</button></div>`).join('') : '<div class="card plain">No suggestion. A line here needs a clear seller and a player at one of your two thinnest listed positions who is not that team’s best asset.</div>') : '<div class="card plain">No proposals to open while trades are closed.</div>';
+  return `<div class="card plain">${esc(b.note)}</div><div class="card plain">${esc(b.scope)}</div><div class="sect">Suggestions</div>${ops}<div class="sect">Every team</div><div class="list">${teams || '<div class="it muted">No teams.</div>'}</div>`;
+}
 function tradeMachine(L) {
   S.trade ||= { tid: (L.userTid + 1) % 29, a: [], ap: [], b: [], bp: [] }; const tr = S.trade;
   const mine = E.teamPlayers(L, L.userTid).sort((a, b) => b.ovr - a.ovr), theirs = E.teamPlayers(L, tr.tid).sort((a, b) => b.ovr - a.ovr);
@@ -712,7 +723,7 @@ function teamNeeds(L, tid) {
 function prospectRow(p, rank, onClock) {
   const sl = (S.L.shortlist || []).includes(p.pid);
   return `<div class="it" data-a="player" data-pid="${p.pid}"><b style="width:24px" class="muted">${rank}</b>${avatar(p, 38)}
-  <div class="grow"><div class="nm">${sl ? starSvg('full', 14) + ' ' : ''}${esc(p.name)}</div><div class="meta">${p.pos} · ${E.ageNow(S.L, p)}y · ${ht(p.h)} · ${esc(p.college || p.country)}</div><div class="meta">RD ${projRound(rank - 1)} PROJ · ${stars(potOf(p), hideR(p) ? null : p.ovr)}${S.L.phase === 'DRAFT' && S.needTid != null && E.fillsNeed(S.L, p, S.needTid) ? ' <span class="tag needtag">Fills need</span>' : ''}</div></div>
+  <div class="grow"><div class="nm">${sl ? starSvg('full', 14) + ' ' : ''}${esc(p.name)}</div><div class="meta">${p.pos} · ${E.ageNow(S.L, p)}y · ${ht(p.h)} · ${esc(p.college || p.country)}</div><div class="meta">RD ${projRound(rank - 1)} PROJ · ${stars(potOf(p), hideR(p) ? null : p.ovr)}${S.L.phase === 'DRAFT' && S.needTid != null && E.fillsNeed(S.L, p, S.needTid) ? ' <span class="tag needtag">Fills need</span>' : ''}</div>${hideR(p) ? '' : `<div class="meta">Scout note on the player page</div>`}</div>
   ${onClock ? `<button class="sm go" data-a="draftPick" data-pid="${p.pid}">Draft</button>` : ''}<div class="rt">${hideR(p) ? sq(null) : sq(p.ovr)}</div></div>`;
 }
 // ---------- fantasy draft room (PGM2 draft-room style) ----------
@@ -1353,6 +1364,15 @@ const A = {
     const r = E.executeMultiTrade(L, ct.teams.slice(), moves); if (!r.ok) return toast(r.error); ct.mv = {}; toast('Trade done');
     (L.inbox ||= []).unshift({ id: L.msgId++, season: L.season, day: L.day, from: 'Commissioner', subject: 'Trade completed', body: r.text, read: false }); autosave(); render(); },
   propose() { const L = S.L, tr = S.trade; const o = { tidA: L.userTid, tidB: tr.tid, aPids: tr.a, aPicks: tr.ap, bPids: tr.b, bPicks: tr.bp }; const ev = E.evaluateTrade(L, o); if (!ev.ok) return toast(ev.error); const t = E.executeTrade(L, o); L.inbox.unshift({ id: L.msgId++, season: L.season, day: L.day, from: 'Front Office', subject: 'Trade completed', body: t, read: false }); toast('Trade accepted!'); S.trade = null; autosave(); if (L.phase === 'DRAFT' && S.fromDraft) { S.fromDraft = false; S.tab.draft = 'avail'; return root('draft'); } render(); },
+  deadlineOpen(d) {
+    const L = S.L, tid = +d.tid, pid = +d.pid, p = E.getP(L, pid);
+    if (!tradeOpen(L)) return toast('Trades are closed.');
+    if (!p || p.tid !== tid) return toast('That player is no longer on that team.');
+    S.trade = { tid, a: [], ap: [], b: [pid], bp: [] };
+    S.tab.trade = 'machine';
+    toast('Proposal only. Nothing is sent until you tap Propose or Ask for a counter.');
+    render();
+  },
   askCounter() {
     const L = S.L, tr = S.trade; if (!tr) return;
     const o = { tidA: L.userTid, tidB: tr.tid, aPids: [...tr.a], aPicks: [...tr.ap], bPids: [...tr.b], bPicks: [...tr.bp] };
