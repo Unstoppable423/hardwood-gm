@@ -12,7 +12,7 @@ const CORE = ATTRS;
 // Stylistic reference shapes on the same 40-99 display scale as the player page.
 // firstSeason is the game season year of his rookie year (1997 = 1996-97). A draft may cite him
 // only after that season, so a 1997 draft cannot call a 2003 draftee a former player.
-export const ARCHETYPES = [
+export const STYLE_COMPS = [
   { name: 'Magic Johnson', pos: 'PG', firstSeason: 1980, attrs: { pas: 96, han: 88, iq: 90, ath: 82, out: 72, ins: 78, reb: 74, pdef: 64, idef: 58 } },
   { name: 'John Stockton', pos: 'PG', firstSeason: 1985, attrs: { pas: 94, han: 86, iq: 90, out: 78, ins: 64, ath: 70, reb: 58, pdef: 76, idef: 52 } },
   { name: 'Gary Payton', pos: 'PG', firstSeason: 1991, attrs: { pdef: 94, han: 86, pas: 80, ath: 84, iq: 82, out: 74, ins: 70, reb: 62, idef: 60 } },
@@ -184,7 +184,7 @@ export function scoutReport(p, { draftYear = null, hidden = false, careers = 're
     return base;
   }
   const year = +draftYear;
-  const pool = ARCHETYPES.filter(a => a.firstSeason < year && a.pos === p.pos);
+  const pool = STYLE_COMPS.filter(a => a.firstSeason < year && a.pos === p.pos);
   const mine = Object.fromEntries(g.filter(x => CORE.includes(x.k) || ['sco'].includes(x.k)).map(x => [x.k, x.v]));
   let best = null;
   for (const a of pool) {
