@@ -3,7 +3,7 @@
 import { addProspect } from './draftclass.js';
 import { clamp } from './rng.js';
 import { eligiblePos, ATTRS, ovrFromAttrs, dispRating, internalFor, deriveDefSkills, devTrait, generateVeteran, posFrom } from './players.js';
-import { getP, teamPlayers, reindex, logTx, ensureNumbers, news } from './league.js';
+import { getP, teamPlayers, reindex, logTx, ensureNumbers, news, clearLineup } from './league.js';
 import { minSalary, maxSalary, ROSTER_MAX, POS } from './constants.js';
 import { raiseCap, yearOneFor, maxYears, isOffseasonBeforeNewYear } from './offseason.js';
 import { careerOf, careerMode, arcPot } from './careers.js';
@@ -96,7 +96,7 @@ export function applyEdit(L, pid, m) {
     if (wasRetired) { p.retired = false; p.retiredSeason = undefined; p.overseas = undefined; }
     if (m.tid === -1) { p.contract = null; p.il = false; }
     if (p.stats) p.stats.tid = m.tid;
-    for (const t of [from, m.tid]) if (t >= 0) L.teams[t].rotation = null;
+    for (const t of [from, m.tid]) if (t >= 0) clearLineup(L.teams[t]);
   }
   if (p.tid >= 0) {
     const c = m.contract || (p.contract ? null : { amt: minSalary(L.season), yrs: 1, raise: 0 });
@@ -133,7 +133,7 @@ export function faAddExisting(L, pid) { // retired / overseas player returns, or
   if (!p || p.tid === -1) return { ok: false, error: 'Already a free agent.' };
   const from = p.tid; if (p.tid === -2) return { ok: false, error: 'Draft prospects enter through the draft.' };
   if (p.retired) { p.retired = false; p.overseas = undefined; p.retiredSeason = undefined; delete p.hiatus; delete p.stashed; }
-  if (from >= 0) { p.formerTid = from; L.teams[from].rotation = null; }
+  if (from >= 0) { p.formerTid = from; clearLineup(L.teams[from]); }
   p.tid = -1; p.contract = null; p.il = false; if (p.stats) p.stats.tid = -1;
   logTx(L, { type: 'edit', text: from >= 0 ? `Commissioner release to free agency (from ${L.teams[from].abbr})` : 'Added to the free-agent pool' }, [p.pid]); reindex(L);
   return { ok: true };
