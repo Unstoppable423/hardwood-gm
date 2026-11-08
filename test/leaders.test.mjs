@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { careerBoard, recordSaveGame, franchiseIdOfTeam, SAVE_LEADERS_NOTE } from '../src/engine/leaders.js';
-import { newLeague } from '../src/engine/league.js';
+import { newLeague, simDay } from '../src/engine/league.js';
+import { advance } from '../src/engine/offseason.js';
 
 const line = (pts, extra = {}) => ({ min: 20, pts, fgm: 4, fga: 8, tpm: 1, tpa: 2, ftm: 2, fta: 2, orb: 1, drb: 3, ast: 2, stl: 1, blk: 1, tov: 1, ...extra });
 function P(o = {}) {
@@ -25,6 +26,26 @@ test('a new game at several start years begins at zero and ignores real career e
     assert.equal(board.coverage.note, SAVE_LEADERS_NOTE);
     assert.equal(board.coverage.title, 'Save career leaders');
   }
+});
+
+test('one simulated day records each game once and keeps the franchise split', () => {
+  const start = JSON.parse(readFileSync(new URL('../data/start1996.json', import.meta.url)));
+  const L = newLeague({ start, classes: {} }, { seed: 4, userTid: 0, draftClasses: 'generated' });
+  advance(L);
+  simDay(L);
+  const played = L.players.filter(p => p.stats?.reg?.gp > 0);
+  assert.ok(played.length > 10);
+  for (const p of played) {
+    assert.equal(p.ledger.reg.nba.gp, p.stats.reg.gp);
+    assert.equal(p.ledger.reg.nba.pts, p.stats.reg.pts);
+    const split = Object.values(p.ledger.reg.fid).reduce((a, s) => a + (s.gp || 0), 0);
+    assert.equal(split, p.stats.reg.gp);
+    assert.equal(p.ledger.partial['1997:reg'], undefined);
+  }
+  const nba = careerBoard(L, { stat: 'pts' }).rows.reduce((a, r) => a + r.value, 0);
+  const byTeam = L.teams.reduce((a, t) => a + careerBoard(L, { stat: 'pts', scope: t.fid || t.abbr }).rows.reduce((s, r) => s + r.value, 0), 0);
+  assert.equal(byTeam, nba);
+  assert.equal(careerBoard(L, { stat: 'pts', side: 'po' }).rows.length, 0);
 });
 
 test('games add to the save total, playoffs stay separate, and ties share a rank', () => {

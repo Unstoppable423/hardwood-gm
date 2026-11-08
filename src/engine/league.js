@@ -411,10 +411,10 @@ function accumulate(L, box, key, gameMeta) {
   for (const tid in box) for (const pid in box[tid]) {
     const line = box[tid][pid]; const p = getP(L, +pid); if (!p) continue;
     if (p.stats.season !== L.season) resetSeasonStats(p, L.season);
+    recordSaveGame(p, key, +tid, line, franchiseIdOfTeam(L.teams[+tid]));
     const S = p.stats[key]; if (line.min > 0) S.gp++;
     if (gameMeta && line.min > 0) { const home = +tid === gameMeta.h; const won = home ? gameMeta.hs > gameMeta.as : gameMeta.as > gameMeta.hs; // compact season game log: [gid, opp, home, win, min, pts, reb, ast, fgm, fga, +/-, playoff]
       (p.stats.glog ||= []).push([gameMeta.gid, home ? gameMeta.a : gameMeta.h, home ? 1 : 0, won ? 1 : 0, Math.round(line.min), line.pts, line.orb + line.drb, line.ast, line.fgm, line.fga, line.pm, gameMeta.po ? 1 : 0, line.gs ? 1 : 0, line.tpm, line.tpa, line.ftm, line.fta, line.orb, line.drb, line.stl, line.blk, line.tov, line.pf]); }
-    recordSaveGame(p, key, +tid, line, franchiseIdOfTeam(L.teams[+tid]));
     for (const k in line) if (k !== 'gs') S[k] += line[k]; else S.gs += line.gs;
     p.stats.tid = p.tid;
     for (const st of ['pts', 'reb', 'ast']) {
