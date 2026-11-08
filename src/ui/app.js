@@ -135,12 +135,30 @@ function render() {
   else if (S.view === 'pickteam') app.innerHTML = pickTeamView();
   else if (S.view === 'preview') app.innerHTML = previewView();
   else app.innerHTML = shellView();
-  renderDrawer(); renderModal(); fitCta();
+  renderDrawer(); renderModal(); placeCta();
 }
-// keep the last row of every page clear of the fixed bottom action bar (its height varies with button count / safe area)
-function fitCta() { const app = $('#app'), c = app?.querySelector('.cta'); const h = (c ? Math.ceil(c.getBoundingClientRect().height) : 0) + 'px'; app?.style.setProperty('--ctaH', h); document.documentElement.style.setProperty('--ctaH', h); }
-window.addEventListener('resize', () => fitCta());
-// Safari/in-app browsers: when a toolbar overlays the bottom of the layout viewport, lift the bar above it and pad the page by the same amount
+// The action bar is rendered inside #app, but #app is a transformed scroller.
+// A transformed ancestor is the containing block for position:fixed, so the
+// bar scrolled with the draft list and sat over prospects. Park it in a
+// viewport-fixed dock that is a sibling of #app. Click handling is on
+// document, so moving the node does not change what the buttons do.
+function placeCta() {
+  const app = $('#app'); if (!app) return;
+  let dock = document.getElementById('ctaDock');
+  const fresh = app.querySelector(':scope > .cta');
+  if (fresh) {
+    if (!dock) { dock = document.createElement('div'); dock.id = 'ctaDock'; document.body.appendChild(dock); }
+    dock.replaceChildren(fresh);
+  } else dock?.remove();
+  sizeCta();
+}
+function sizeCta() {
+  const app = $('#app'), dock = document.getElementById('ctaDock');
+  const h = (dock?.querySelector('.cta') ? Math.ceil(dock.getBoundingClientRect().height) : 0) + 'px';
+  app?.style.setProperty('--ctaH', h); document.documentElement.style.setProperty('--ctaH', h);
+}
+window.addEventListener('resize', sizeCta);
+// Safari/in-app browsers: size the shell to the visual viewport. #ctaDock uses --vvGap so the buttons sit above the browser chrome.
 function fitVV() {
   const vv = window.visualViewport;
   const box = viewportBox({ innerHeight: window.innerHeight, offsetTop: vv ? vv.offsetTop : 0, height: vv ? vv.height : window.innerHeight, scale: vv ? vv.scale : 1 });
@@ -148,7 +166,7 @@ function fitVV() {
   const s = document.documentElement.style;
   s.setProperty('--vvTop', box.top + 'px'); s.setProperty('--vvH', box.height + 'px'); s.setProperty('--vvGap', box.bottom + 'px');
 }
-window.visualViewport?.addEventListener('resize', () => { fitVV(); fitCta(); }); window.visualViewport?.addEventListener('scroll', fitVV); fitVV();
+window.visualViewport?.addEventListener('resize', () => { fitVV(); sizeCta(); }); window.visualViewport?.addEventListener('scroll', fitVV); fitVV();
 function pageY() { const el = $('#app'); return el ? el.scrollTop : window.scrollY; }
 function pageTo(y = 0) { const el = $('#app'); if (el) el.scrollTo(0, y); else window.scrollTo(0, y); }
 function readFileText(file) {

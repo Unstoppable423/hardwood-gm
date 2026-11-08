@@ -12,7 +12,7 @@ button.ghost{background:transparent;border:1px solid var(--line)}
 button.sm{padding:6px 10px;font-size:13px;border-radius:7px}
 button.red{background:var(--q1);color:#fff}
 input,select{font:inherit;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);width:100%}
-#app{position:fixed;top:var(--vvTop,0px);left:50%;transform:translateX(-50%);width:100%;max-width:520px;height:var(--vvH,100dvh);margin:0;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;background:var(--bg);padding-bottom:calc(var(--ctaH,80px) + env(safe-area-inset-bottom) + 16px);scroll-padding-top:calc(46px + env(safe-area-inset-top));scroll-padding-bottom:calc(var(--ctaH,80px) + env(safe-area-inset-bottom) + 16px)}
+#app{position:fixed;top:var(--vvTop,0px);left:50%;transform:translateX(-50%);width:100%;max-width:520px;height:calc(var(--vvH,100dvh) - var(--ctaH,0px));margin:0;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;background:var(--bg);padding-bottom:16px;scroll-padding-top:calc(46px + env(safe-area-inset-top));scroll-padding-bottom:16px}
 /* header */
 .hdr{position:sticky;top:0;z-index:8;background:var(--hdr);color:#fff;height:calc(54px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);box-sizing:border-box;display:grid;grid-template-columns:64px 1fr 64px;align-items:center;box-shadow:0 1px 0 #0002}
 .hdr .ttl{text-align:center;font-weight:800;font-size:17px;letter-spacing:1.2px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -171,7 +171,7 @@ b.fit { color: var(--q3); } b.fit.good { color: var(--q4); } b.fit.bad { color: 
 .inj-ico { vertical-align: -1px; }
 .ico.flip { transform: scaleX(-1); } .chev { color: var(--sub, #8a95a3); display: inline-flex; }
 /* mobile polish (375px pass): 40-44px tap targets, solid bottom bar, content never hidden under it */
-/* Every screen with a fixed bottom bar: pad by bar height + safe area + room for Safari's floating toolbar (in-app browsers overlay it). */
+/* #app's height already ends at the top of #ctaDock, so the list cannot scroll under the buttons. */
 html, body { height: 100%; overflow: hidden; }
 .cta { bottom: 0; }
 .cta { background: var(--bg); box-shadow: 0 -1px 0 var(--line), 0 -6px 14px #0000000f; padding-top: 10px; }
@@ -236,6 +236,13 @@ html{scroll-padding-top:56px;scroll-padding-bottom:calc(var(--ctaH,0px) + env(sa
 .tabs button{min-height:40px}#app select,#app input:not([type=range]):not([type=checkbox]):not([type=color]),#app button{min-height:40px}
 
 .drawer,.modal,.overlay{top:var(--vvTop,0px);height:var(--vvH,100dvh);bottom:auto;padding-top:env(safe-area-inset-top)}
+/* Action bar lives outside #app (see placeCta). #app's translateX centering
+   would otherwise be the fixed bar's containing block, and the overflow
+   scroller would carry the bar up the draft list. Own transform on the dock
+   only centers the 520px column. --vvGap lifts it when browser chrome covers
+   the bottom of the layout viewport. */
+#ctaDock{position:fixed;left:50%;bottom:var(--vvGap,0px);transform:translateX(-50%);width:100%;max-width:520px;z-index:12}
+#ctaDock .cta{position:relative;left:auto;right:auto;top:auto;bottom:auto;transform:none;width:100%;max-width:none}
 label.filebtn{position:relative;overflow:hidden;cursor:pointer}
 label.filebtn input[type=file]{position:absolute;inset:0;opacity:0;width:100%;height:100%;font-size:16px;cursor:pointer}
 label.filebtn.sm{display:inline-flex;align-items:center;justify-content:center;min-height:40px;min-width:40px;padding:6px 10px;font-size:13px;border-radius:7px;background:var(--chip);color:var(--ink)}
