@@ -256,3 +256,22 @@ table.full tr>:first-child{position:sticky;left:0;background:var(--card);z-index
 .st-pot{position:absolute;left:0;top:0;width:100%;overflow:hidden;opacity:.5}
 .st-pot.h{width:50%}
 .st-half.f{width:100%}
+/* v49: team breakdown (read-only) */
+.bd-card .bd-find{padding:8px 0;border-bottom:1px solid var(--line)}
+.bd-card .bd-find:last-child{border-bottom:0}
+.bd-note{font-size:13px;line-height:1.35;text-transform:none;letter-spacing:0;color:var(--ink);margin-top:3px}
+.bd-src{font-size:13px;line-height:1.35}
+.bd-k{font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--sub);margin-right:4px}
+.bd-slot{width:28px;flex:none;color:var(--hdr);font-size:13px}
+.bd-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.bd-fit{font-size:10px;font-weight:700;letter-spacing:.2px;text-transform:uppercase;padding:2px 6px;border-radius:4px;background:var(--chip);color:var(--sub)}
+.bd-fit.sec{background:color-mix(in srgb, var(--hdr) 16%, var(--card));color:var(--hdr)}
+.bd-fit.out{background:color-mix(in srgb, var(--q1) 16%, var(--card));color:var(--q1)}
+.bd-ev{font-size:10px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;padding:2px 6px;border-radius:4px;flex:none}
+.bd-ev.ratings{background:color-mix(in srgb, var(--hdr) 16%, var(--card));color:var(--hdr)}
+.bd-ev.stats{background:color-mix(in srgb, var(--q4) 22%, var(--card));color:var(--q5)}
+.bd-ev.both{background:color-mix(in srgb, var(--gold) 35%, var(--card));color:#8a6a10}
+.dark .bd-ev.both{color:var(--gold)}
+.bd-conflict{border-left:3px solid var(--gold);padding-left:8px}
+.bd-depth{padding:7px 0;border-bottom:1px solid var(--line)}
+.bd-depth:last-of-type{border-bottom:0}

@@ -305,8 +305,9 @@ function ownerCard(L, compact) {
 }
 function rosterCheck(L) {
   const n = E.teamPlayers(L, L.userTid).length, pr = E.payroll(L, L.userTid), c = E.cap(L);
-  return `<div class="card"><h3>Roster check</h3><div class="kv"><span>Players</span><b class="${n > E.ROSTER_MAX || n < E.ROSTER_MIN ? 'tr' : 'tg'}">${n} (${E.ROSTER_MIN}–${E.ROSTER_MAX})</b></div><div class="kv"><span>Payroll</span><b>${M(pr)}</b></div><div class="kv"><span>Cap room</span><b class="${pr <= c ? 'tg' : 'tr'}">${pr <= c ? M(c - pr) : '−' + M(pr - c)}</b></div>
+  return `<div class="card"><h3>Roster check</h3><div class="kv"><span>Players</span><b class="${n > E.ROSTER_MAX || n < E.ROSTER_MIN ? 'tr' : 'tg'}">${n} (${E.ROSTER_MIN}–${E.ROSTER_MAX})</b></div><div class="kv"><span>Payroll</span><b>${M(pr)}</b></div><div class="kv"><span>Cap room</span><b class="${pr <= c ? 'tg' : 'tr'}">${pr <= c ? M(c - pr) : '−' + M(pr - c)}</b></div><div class="kv"><span>Biggest needs</span><b>${E.topNeeds(L, L.userTid).join(', ') || '—'}</b></div>
   ${n > E.ROSTER_MAX ? `<button class="red" style="width:100%;margin-top:8px" data-a="autoCut">Let the coaches cut to ${E.ROSTER_MAX}</button>` : ''}${n < E.ROSTER_MIN ? `<button class="blue" style="width:100%;margin-top:8px" data-a="nav" data-p="fa">Sign free agents</button>` : ''}
+  <button style="width:100%;margin-top:8px" data-a="openBreakdown" data-tid="${L.userTid}">Team breakdown</button>
   <div class="grid2" style="margin-top:8px"><button data-a="nav" data-p="reorder">Reorder rotation</button><button data-a="nav" data-p="team" data-t="staff">Staff</button></div></div>`;
 }
 function divisionCard(L) {
@@ -356,6 +357,49 @@ function seriesList(series) {
   return `<div class="list">${series.map(s => `<div class="it">${disc(s.hi, 30)}<div class="grow center"><div class="nm" style="font-size:13px">(${s.hiSeed}) ${T(s.hi).abbr}  ${s.wh} - ${s.wl}  ${T(s.lo).abbr} (${s.loSeed})</div><div class="meta">${s.winner != null ? `${T(s.winner).abbr} win series` : `best of ${s.len}`}</div></div>${disc(s.lo, 30)}</div>`).join('')}</div>`;
 }
 
+// ---------- TEAM BREAKDOWN (read-only; same need score as the draft sheet) ----------
+function bdEv(basis) {
+  const lab = basis === 'stats' ? 'Season' : basis === 'both' ? 'Ratings + season' : 'Ratings';
+  return `<span class="bd-ev ${basis || 'ratings'}">${lab}</span>`;
+}
+function bdFit(c) {
+  if (!c) return '';
+  if (c.fit === 'listed') return '<span class="bd-fit">Listed</span>';
+  if (c.fit === 'secondary') return `<span class="bd-fit sec">Also plays · counts ${c.fitOvr}</span>`;
+  if (c.fit === 'penalty') return `<span class="bd-fit out">Natural ${esc(c.natPos || '—')} · penalty −${c.penalty}</span>`;
+  return '<span class="bd-fit out">Not a fit here</span>';
+}
+const tight = (s) => String(s).replace(/ (pts|reb|ast|min|GP)\b/g, '\u00a0$1').replace(/([A-Za-z]) (\d)/g, '$1\u00a0$2');
+function bdPlayer(c, slot) {
+  if (!c) return '';
+  const p = E.getP(S.L, c.pid);
+  const attrs = (c.attrs || []).map(a => `${a.label} ${a.v}`).join(' · ');
+  return `<div class="it" data-a="player" data-pid="${c.pid}">${slot ? `<b class="bd-slot">${slot}</b>` : ''}${p ? avatar(p, 36) : ''}<div class="grow"><div class="nm">${esc(c.name)}${c.il ? ' <span class="iltag">IL</span>' : ''}${c.injured ? ` <span class="inj">${injIcon()} ${c.injGames || '?'}g</span>` : ''}</div><div class="bd-tags">${bdFit(c)}${c.minutes ? `<span class="bd-fit">Plan ${c.minutes} min</span>` : ''}</div>${c.line ? `<div class="bd-note"><span class="bd-k">Season</span> ${esc(tight(c.line.text))}</div>` : ''}${attrs ? `<div class="bd-note"><span class="bd-k">Ratings</span> ${esc(tight(attrs))}</div>` : ''}</div>${p ? sq(p.ovr) : ''}</div>`;
+}
+function bdFind(f) {
+  return `<div class="bd-find"><div class="row sp" style="gap:8px;align-items:flex-start"><b>${esc(f.label)}</b>${bdEv(f.basis)}</div><div class="bd-note">${esc(f.text)}</div>${f.support ? `<div class="bd-note">${esc(f.support)}</div>` : ''}${f.conflict ? `<div class="bd-note bd-conflict">${esc(f.conflict)}</div>` : ''}</div>`;
+}
+function breakdownTab(L, tid) {
+  const b = E.teamBreakdown(L, tid);
+  const finds = (title, rows, empty) => `<div class="sect">${title}</div><div class="card bd-card">${rows.length ? rows.map(bdFind).join('') : `<div class="bd-note">${empty}</div>`}</div>`;
+  const needs = `<div class="sect">Roster needs</div><div class="card bd-card">${b.needs.map(n => `<div class="bd-find"><div class="row sp"><span>${n.hot ? '<span class="tag" style="background:var(--gold)">NEED</span> ' : ''}<b>${n.pos}</b></span><b>${Number.isFinite(n.score) ? n.score : '—'}</b></div><div class="bd-note">${esc(n.text)}</div></div>`).join('')}<div class="muted small">Higher score means a bigger need. Same formula as the draft sheet: best fit and the next eligible player, a secondary position counts 3 lower, and an aging or expiring starter adds need. The top two are the draft Needs filter. Nothing here changes the roster.</div></div>`;
+  if (b.empty) return `<div class="card">${esc(b.lineupNote)}</div><div class="card">${esc(b.read)}</div>${needs}`;
+  const five = b.positions.map(pos => pos.onFloor ? bdPlayer(pos.onFloor, pos.pos) : `<div class="it muted"><b class="bd-slot">${pos.pos}</b><div class="grow">No starter</div></div>`).join('');
+  const depth = b.positions.map(pos => {
+    const rest = pos.bench.slice(0, 3).map(c => `${esc(c.name)} ${c.show ?? '—'}${c.fit === 'secondary' ? ' sec' : c.fit === 'penalty' ? ' out' : ''}${c.injured ? ' inj' : ''}${c.il ? ' IL' : ''}`).join(', ');
+    const more = pos.bench.length > 3 ? ` · +${pos.bench.length - 3} more` : '';
+    return `<div class="bd-depth"><div class="row"><b class="bd-slot">${pos.pos}</b><div class="grow bd-note">${rest || 'No other eligible player'}${more}</div><span class="muted">${pos.eligible}</span></div><div class="bd-note">${esc(pos.plain)}</div></div>`;
+  }).join('');
+  return `${b.thin ? `<div class="card">Only ${b.players} player${b.players === 1 ? '' : 's'} (${b.healthy} healthy). An open spot means nobody eligible is on the roster.</div>` : ''}
+  <div class="card"><div class="bd-src">${esc(b.lineupNote)}</div><div class="bd-note" style="margin-top:6px">${esc(b.stat.text)}</div><div class="bd-note">${esc(b.read)}</div></div>
+  ${finds('Strengths', b.strengths, 'Nothing on the ratings sheet stands clearly above the rest of the league.')}
+  ${finds('Weaknesses', b.weaknesses, 'Nothing on the ratings sheet stands clearly below the rest of the league.')}
+  ${b.results.length ? finds('Season results', b.results, '') : ''}
+  <div class="sect">Starting five</div><div class="list">${five}</div>
+  <div class="sect">Depth by position</div><div class="card bd-card">${depth}<div class="muted small">Eligible count matches the draft sheet. “sec” is a secondary position (need score uses overall minus 3). A player can appear at more than one spot. Planned minutes are the rotation, not minutes already played.</div></div>
+  ${needs}`;
+}
+
 // ---------- MY TEAM (any team) ----------
 function playerRow(p, opts = {}) {
   const L = S.L; const inj = (p.il ? '<span class="iltag">IL</span> ' : '') + (p.injury ? `<span class="inj">${injIcon()} ${Math.ceil(p.injury.games)}g</span>` : '');
@@ -371,15 +415,18 @@ PAGES.team = (pg0) => {
   const tb = curTab('team', 'roster');
   const top = `<div class="thead">${disc(tid, 62)}<div class="rings">${ring('DEF', tr.def)}${ring('OFF', tr.off)}${ring('OVR', tr.ovr)}</div></div>
   <div class="caprow"><span>Cap Room <b class="${pr <= c ? 'tg' : 'tr'}">${pr <= c ? M(c - pr) : '−' + M(pr - c)}</b></span><span>Space <b class="${n < E.ROSTER_MIN ? 'tr' : ''}">${n}/${E.ROSTER_MAX}</b>${nIL ? ` <span class="iltag">IL ${nIL}</span>` : ''}</span><span>${E.standings(L)[tid].w}-${E.standings(L)[tid].l}</span></div>` +
-    tabs('team', [['roster', 'Roster'], ['staff', 'Staff'], ['stats', 'Stats'], ['schedule', 'Schedule'], ['history', 'History'], ['cap', 'Cap']], 'roster');
+    tabs('team', [['roster', 'Roster'], ['breakdown', 'Breakdown'], ['staff', 'Staff'], ['stats', 'Stats'], ['schedule', 'Schedule'], ['history', 'History'], ['cap', 'Cap']], 'roster');
   let body = '';
   if (tb === 'roster') {
     const ps = E.teamPlayers(L, tid);
-    body = E.POS.map(pos => { const g = ps.filter(p => p.pos === pos).sort((a, b) => b.ovr - a.ovr); if (!g.length) return '';
+    const needs = E.topNeeds(L, tid);
+    body = `<div class="list"><div class="it" data-a="openBreakdown" data-tid="${tid}"><div class="grow"><div class="nm">Team breakdown</div><div class="meta">Needs ${needs.length ? needs.join(', ') : '—'} · strengths and depth</div></div><span class="chev">${icon('back', { s: 18, cls: 'flip' })}</span></div></div>`;
+    body += E.POS.map(pos => { const g = ps.filter(p => p.pos === pos).sort((a, b) => b.ovr - a.ovr); if (!g.length) return '';
       return `<div class="sect">${POSN[pos]} <span>${g.length}</span></div><div class="list">${g.map(p => playerRow(p)).join('')}</div>`; }).join('');
     const picks = L.picks.filter(k => k.tid === tid).sort((a, b) => a.season - b.season || a.round - b.round);
     body += `<div class="sect">Draft picks</div><div class="list">${picks.map(k => `<div class="it"><div class="grow"><div class="nm">${E.pickLabel(L, k)}</div><div class="meta">${k.orig === tid ? 'Own pick' : `via ${esc(T(k.orig).city)}`}</div></div>${disc(k.orig, 28)}</div>`).join('') || '<div class="it muted">No picks.</div>'}</div>`;
-  } else if (tb === 'staff') body = staffTab(L, tid, own);
+  } else if (tb === 'breakdown') body = breakdownTab(L, tid);
+  else if (tb === 'staff') body = staffTab(L, tid, own);
   else if (tb === 'stats') body = statsTable(E.teamPlayers(L, tid));
   else if (tb === 'schedule') body = scheduleTab(L, tid);
   else if (tb === 'history') body = teamHistTab(L, tid);
@@ -1041,7 +1088,7 @@ function draftTeamModal() {
   const needs = E.teamNeedsDetail(L, tid);
   const myPicks = L.draft ? L.draft.order.slice(L.draft.idx).filter(o => o.tid === tid) : [];
   return sheetHead(`${esc(t.city)} ${esc(t.name)}`, `${ps.length} players${myPicks.length ? ' · picks ' + myPicks.map(o => '#' + o.pick).join(', ') : ''}`) + `<div class="wrap">
-  <div class="sect">Team needs</div><div class="card">${needs.map((n, i) => `<div class="kv"><span>${i < 2 ? '<span class="tag" style="background:var(--gold)">NEED</span> ' : ''}<b>${n.pos}</b> <small class="muted">${n.starter ? esc(n.starter.name.split(' ').slice(-1)[0]) + ' ' + n.starter.ovr : '—'} · ${n.depth} eligible${n.notes.length ? ' · ' + n.notes.join(', ') : ''}</small></span><b>${n.score}</b></div>`).join('')}<div class="muted small">Higher = bigger need (starter + depth at each spot, secondary positions count; aging/expiring starters add need).</div></div>
+  <div class="sect">Team needs</div><div class="card">${needs.map((n, i) => `<div class="kv"><span>${i < 2 ? '<span class="tag" style="background:var(--gold)">NEED</span> ' : ''}<b>${n.pos}</b> <small class="muted">${n.starter ? esc(n.starter.name.split(' ').slice(-1)[0]) + ' ' + n.starter.ovr : '—'} · ${n.depth} eligible${n.notes.length ? ' · ' + n.notes.join(', ') : ''}</small></span><b>${n.score}</b></div>`).join('')}<div class="muted small">Higher = bigger need (starter + depth at each spot, secondary positions count; aging/expiring starters add need).</div><button class="blue" style="width:100%;margin-top:8px" data-a="openBreakdown" data-tid="${tid}">Full breakdown</button></div>
   <div class="sect">Starting five</div><div class="list">${starters.map(([k, p]) => row(p, k)).join('') || '<div class="it muted">No players.</div>'}</div>
   <div class="sect">Bench</div><div class="list">${bench.map(p => row(p)).join('') || '<div class="it muted">No bench.</div>'}</div>
   ${tid !== L.userTid && myPicks.length ? `<div class="grid2" style="margin:10px 0">${myPicks.slice(0, 2).map(o => `<button class="blue" data-a="tradePick" data-id="${o.id}">Trade for pick #${o.pick}</button>`).join('')}</div>` : ''}
@@ -1126,6 +1173,13 @@ const curAsk = (L, p, kind) => kind === 'resign' ? p.resignAsk : kind === 'ext' 
 let holdT = null;
 const A = {
   noop() {},
+  openBreakdown(d) {
+    const tid = +d.tid; if (!S.L?.teams?.[tid]) return;
+    S.modal = null; renderModal(); S.tab.team = 'breakdown';
+    const cur = S.page.n === 'team' ? (S.page.tid ?? S.L.userTid) : null;
+    if (cur === tid) { render(); return; }
+    go('team', tid === S.L.userTid ? {} : { tid });
+  },
   toTitle() { S.view = 'title'; render(); },
   async toSlots(d) { S.slotMode = d.mode; S.slots = await listSlots(); S.view = 'slots'; render(); },
   newInSlot(d) { S.slot = +d.slot; S.ng = DEF_NG(); S.view = 'setup'; render(); },
