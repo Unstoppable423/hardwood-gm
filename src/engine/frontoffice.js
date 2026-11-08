@@ -4,7 +4,8 @@ import { clamp } from './rng.js';
 import { HOOKS, teamPlayers, getP, msg, msgBatch, teamOvr } from './league.js';
 import { resignOffer, userOffer, askingAmount, moodToward, prefYears } from './offseason.js';
 import { extendContract, extensionAsk } from './pgm2.js';
-import { evaluateTrade, playerValue, pickValue, validateTrade, pickLabel } from './trade.js';
+import { dispRating } from './players.js';
+import { evaluateTrade, playerValue, pickValue, validateTrade, pickLabel, tradeKey } from './trade.js';
 
 // ---------- Fans ----------
 export function fanLabel(v) { return v >= 85 ? 'Electric' : v >= 70 ? 'Buzzing' : v >= 55 ? 'Loyal' : v >= 40 ? 'Restless' : v >= 25 ? 'Frustrated' : 'Apathetic'; }
@@ -124,4 +125,72 @@ export function tradeFeedback(L, o) {
     if (suggest) lines.push(`Add ${suggest.name} and we have a deal.`);
   }
   return { ok: ev.ok, lines, suggest, mode, from: `${them.city} GM`, pct: ev.need ? Math.min(100, Math.round(ev.giveV / ev.need * 100)) : 0 };
+}
+// A counter is a different offer the CPU would accept. It is stored, not executed.
+function cloneOffer(o) {
+  return { tidA: o.tidA, tidB: o.tidB, aPids: [...(o.aPids || [])], aPicks: [...(o.aPicks || [])], bPids: [...(o.bPids || [])], bPicks: [...(o.bPicks || [])] };
+}
+function sideValue(L, pids, picks) {
+  return pids.reduce((s, id) => s + playerValue(L, getP(L, id)), 0) + picks.reduce((s, id) => { const k = (L.picks || []).find(p => p.id === id); return s + (k ? pickValue(L, k) : 0); }, 0);
+}
+function fitsDirection(mode, kind, p, k, L) {
+  if (kind === 'k') return !(mode === 'contend' && k.season > L.season + 1);
+  if (mode === 'contend' && p.age <= 22 && dispRating(p.ovr) < 74) return false;
+  if (mode === 'rebuild' && p.age >= 31) return false;
+  return true;
+}
+function dealOk(L, o) { const v = validateTrade(L, o); if (!v.ok) return false; return !!evaluateTrade(L, o).ok; }
+export function makeCounter(L, o) {
+  if (!o) return null;
+  const origEv = evaluateTrade(L, o);
+  if (origEv.ok) return null;
+  if (!('giveV' in origEv)) return null;
+  const work = cloneOffer(o);
+  const notes = [];
+  const cpuPs = teamPlayers(L, o.tidB);
+  const star = cpuPs.slice().sort((a, b) => playerValue(L, b) - playerValue(L, a))[0];
+  if (star && work.bPids.includes(star.pid) && sideValue(L, work.aPids, work.aPicks) < playerValue(L, star) * 1.1) {
+    work.bPids = work.bPids.filter(id => id !== star.pid);
+    notes.push(`${star.name} is not in the counter. The offer does not cover him.`);
+  }
+  const held = (L.picks || []).filter(k => work.bPicks.includes(k.id) && k.round === 1 && k.season <= L.season + 1)
+    .sort((a, b) => pickValue(L, b) - pickValue(L, a))[0];
+  if (held && sideValue(L, work.aPids, work.aPicks) < pickValue(L, held) * 1.1) {
+    work.bPicks = work.bPicks.filter(id => id !== held.id);
+    notes.push(`Their ${held.season} first-round pick stays with them.`);
+  }
+  if (!work.aPids.length && !work.aPicks.length) return null;
+  if (!work.bPids.length && !work.bPicks.length) return null;
+  const mode = teamMode(L, o.tidB);
+  const userBest = teamPlayers(L, o.tidA).slice().sort((a, b) => playerValue(L, b) - playerValue(L, a))[0];
+  const pool = [];
+  for (const p of teamPlayers(L, o.tidA)) {
+    if (work.aPids.includes(p.pid) || (userBest && p.pid === userBest.pid)) continue;
+    if (!fitsDirection(mode, 'p', p, null, L)) continue;
+    pool.push({ kind: 'p', id: p.pid, v: playerValue(L, p), name: p.name, premium: false });
+  }
+  for (const k of (L.picks || []).filter(k => k.tid === o.tidA && !work.aPicks.includes(k.id))) {
+    if (!fitsDirection(mode, 'k', null, k, L)) continue;
+    pool.push({ kind: 'k', id: k.id, v: pickValue(L, k), name: pickLabel(L, k), premium: k.round === 1 && k.season <= L.season + 1 });
+  }
+  pool.sort((a, b) => (a.premium - b.premium) || (a.v - b.v));
+  const finish = (deal) => ({ offer: deal, note: (notes.join(' ') + ' Nothing moves until you accept this counter.').trim(), mode });
+  if (dealOk(L, work)) return finish(work);
+  for (const c of pool) {
+    const deal = cloneOffer(work);
+    if (c.kind === 'p') deal.aPids.push(c.id); else deal.aPicks.push(c.id);
+    if (!dealOk(L, deal)) continue;
+    notes.push(`They will take it if you add ${c.name}.`);
+    return finish(deal);
+  }
+  return null;
+}
+export function fileCounter(L, o) {
+  const c = makeCounter(L, o); if (!c) return null;
+  L.tradeOffers ||= []; L.offerId ||= 1;
+  const prev = (L.tradeOffers || []).find(x => tradeKey(x.offer) === tradeKey(c.offer));
+  if (prev) return prev;
+  const row = { id: L.offerId++, pid: c.offer.aPids[0] ?? 0, day: L.phase === 'REGULAR' ? L.day : 0, season: L.season, phase: L.phase, offer: c.offer, counter: true, note: c.note, mode: c.mode };
+  L.tradeOffers.unshift(row);
+  return row;
 }

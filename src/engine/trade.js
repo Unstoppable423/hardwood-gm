@@ -30,18 +30,35 @@ export function pickValue(L, pk) {
   return Math.round(base * (years >= 1 ? 0.85 * Math.pow(0.88, years - 1) : 1)); // v45: far-future picks discounted
 }
 const salaryOf = (L, pids) => pids.reduce((s, id) => s + (getP(L, id).contract?.amt || 0), 0);
+const sideArr = (xs) => Array.isArray(xs) ? xs : [];
 // offer: { tidA, tidB, aPids, aPicks, bPids, bPicks } — A gives aPids/aPicks to B, receives bPids/bPicks
+function ownedHere(L, tid, pids, picks) {
+  const abbr = L.teams?.[tid]?.abbr || 'that team';
+  for (const id of pids) { const p = getP(L, id); if (!p || p.tid !== tid) return `${p?.name || 'A player'} is not on ${abbr}.`; }
+  for (const id of picks) { const k = (L.picks || []).find(p => p.id === id); if (!k || k.tid !== tid) return `A pick in this trade is no longer owned by ${abbr}.`; }
+  if (new Set(pids).size !== pids.length || new Set(picks).size !== picks.length) return 'This trade lists the same asset twice.';
+  return null;
+}
+export function tradeKey(o) {
+  const j = (xs) => sideArr(xs).slice().sort().join(',');
+  return `${o.tidA}:${o.tidB}:${j(o.aPids)}:${j(o.aPicks)}:${j(o.bPids)}:${j(o.bPicks)}`;
+}
 export function validateTrade(L, o) {
+  if (!o || o.tidA == null || o.tidB == null || o.tidA === o.tidB) return { ok: false, error: 'Pick two different teams.' };
   if (L.phase === 'REGULAR' && L.day > deadlineDay(L)) return { ok: false, error: 'The trade deadline has passed.' };
   if (['PLAYOFFS', 'FA1', 'FA2', 'FA3'].includes(L.phase)) return { ok: false, error: `Trades are closed during ${L.phase.startsWith('FA') ? 'free agency' : 'the playoffs'}.` };
-  if (!o.aPids.length && !o.aPicks.length && !o.bPids.length && !o.bPicks.length) return { ok: false, error: 'Empty trade.' };
-  for (const [tid, give, get] of [[o.tidA, o.aPids, o.bPids], [o.tidB, o.bPids, o.aPids]]) {
+  const aPids = sideArr(o.aPids), aPicks = sideArr(o.aPicks), bPids = sideArr(o.bPids), bPicks = sideArr(o.bPicks);
+  if (!aPids.length && !aPicks.length && !bPids.length && !bPicks.length) return { ok: false, error: 'Empty trade.' };
+  if (new Set([...aPids, ...bPids]).size !== aPids.length + bPids.length) return { ok: false, error: 'The same player is listed on both sides.' };
+  const own = ownedHere(L, o.tidA, aPids, aPicks) || ownedHere(L, o.tidB, bPids, bPicks);
+  if (own) return { ok: false, error: own };
+  for (const [tid, give, get] of [[o.tidA, aPids, bPids], [o.tidB, bPids, aPids]]) {
     const n = teamPlayers(L, tid).filter(p => !p.il).length - give.filter(id => !getP(L, id).il).length + get.filter(id => !getP(L, id).il).length;
     if (n > ROSTER_MAX) return { ok: false, error: `${L.teams[tid].abbr} would have ${n} players (max ${ROSTER_MAX}).` };
     const out = salaryOf(L, give), inc = salaryOf(L, get);
     const after = payroll(L, tid) - out + inc;
-    if (L.settings.capMode === 'hard' && after > cap(L) && inc > out) return { ok: false, error: `${L.teams[tid].abbr} would be over the hard cap.` };
-    if (L.settings.capMode !== 'off' && after > cap(L) && inc > out * 1.25 + 100) return { ok: false, error: `${L.teams[tid].abbr} is over the cap: incoming salary must be ≤125% of outgoing + $0.1M.` };
+    if (L.settings?.capMode === 'hard' && after > cap(L) && inc > out) return { ok: false, error: `${L.teams[tid].abbr} would be over the hard cap.` };
+    if (L.settings?.capMode !== 'off' && after > cap(L) && inc > out * 1.25 + 100) return { ok: false, error: `${L.teams[tid].abbr} is over the cap: incoming salary must be ≤125% of outgoing + $0.1M.` };
   }
   return { ok: true };
 }
