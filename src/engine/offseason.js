@@ -1,4 +1,5 @@
 import { applyEraRules } from './histstart.js';
+import { stintsForArchive } from './leaders.js';
 import { rand, randInt, normal, pick, shuffle, clamp, weighted, getSeed } from './rng.js';
 import { teamFit } from './schemes.js';
 import { applyHistory, lotteryRule } from './history.js';
@@ -468,7 +469,7 @@ function leaveAwards(L) {
     if (p.tid < -1 && !(p.tid === -2)) continue;
     const s = p.stats.reg, po = p.stats.po;
     if (s.gp > 0 || po.gp > 0) p.career.push({ season: L.season, tid: p.stats.tid, abbr: L.teams[p.stats.tid]?.abbr ?? 'FA', gp: s.gp, gs: s.gs, min: s.min, pts: s.pts, reb: s.orb + s.drb, ast: s.ast, stl: s.stl, blk: s.blk, tov: s.tov,
-      fgm: s.fgm, fga: s.fga, tpm: s.tpm, tpa: s.tpa, ftm: s.ftm, fta: s.fta, orb: s.orb, drb: s.drb, pf: s.pf, ppg: s.gp ? s.pts / s.gp : 0, ovr: p.ovr, po: { gp: po.gp, pts: po.pts, reb: po.orb + po.drb, ast: po.ast } });
+      fgm: s.fgm, fga: s.fga, tpm: s.tpm, tpa: s.tpa, ftm: s.ftm, fta: s.fta, orb: s.orb, drb: s.drb, pf: s.pf, ppg: s.gp ? s.pts / s.gp : 0, ovr: p.ovr, po: { gp: po.gp, pts: po.pts, reb: po.orb + po.drb, ast: po.ast }, ...(stintsForArchive(p.stats) ? { stints: stintsForArchive(p.stats) } : {}) });
     p.hist.push({ season: L.season, ovr: p.ovr, pot: p.pot, age: p.age });
   }
   for (const pid of L.retiring || []) { const p = getP(L, pid); if (p && !p.retired) retire(L, p); }

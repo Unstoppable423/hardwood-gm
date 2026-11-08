@@ -12,6 +12,7 @@ import { careerMode, arcPot, applyPeakNow, calibrateRealProspect } from './caree
 import { START_FUTURE, histPotFromPeak, attrTops, playerFromStats, finalizeStartRatings, prospectFromReal, generateProspect, generateVeteran, devTrait, marketValue,
   setNextPid, getNextPid, POS_OVERRIDE, REAL_STARTERS, POS_ELIG, eligiblePos, genName, ovrFromAttrs, capFictional, floorReal } from './players.js';
 import { simGame, autoRotation } from './sim.js';
+import { noteStint } from './leaders.js';
 import { startPreseason, cpuUpgrade, addStashedReal } from './offseason.js';
 
 export const VERSION = 1;
@@ -414,6 +415,7 @@ function accumulate(L, box, key, gameMeta) {
     if (gameMeta && line.min > 0) { const home = +tid === gameMeta.h; const won = home ? gameMeta.hs > gameMeta.as : gameMeta.as > gameMeta.hs; // compact season game log: [gid, opp, home, win, min, pts, reb, ast, fgm, fga, +/-, playoff]
       (p.stats.glog ||= []).push([gameMeta.gid, home ? gameMeta.a : gameMeta.h, home ? 1 : 0, won ? 1 : 0, Math.round(line.min), line.pts, line.orb + line.drb, line.ast, line.fgm, line.fga, line.pm, gameMeta.po ? 1 : 0, line.gs ? 1 : 0, line.tpm, line.tpa, line.ftm, line.fta, line.orb, line.drb, line.stl, line.blk, line.tov, line.pf]); }
     for (const k in line) if (k !== 'gs') S[k] += line[k]; else S.gs += line.gs;
+    noteStint(p.stats, key, tid, line);
     p.stats.tid = p.tid;
     for (const st of ['pts', 'reb', 'ast']) {
       const v = st === 'reb' ? line.orb + line.drb : line[st];

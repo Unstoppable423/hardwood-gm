@@ -824,8 +824,8 @@ function draftBoard(L) { // pre-draft scouting board (any phase)
 // ---------- LEAGUE ----------
 PAGES.league = () => {
   const L = S.L; const tb = curTab('league', 'standings');
-  const top = tabs('league', [['standings', 'Standings'], ['stories', 'Stories'], ['tstat', 'Team Stat'], ['pstat', 'Player Stat'], ['records', 'Records'], ['playoffs', 'Playoffs'], ['awards', 'Awards'], ['history', 'History'], ['hof', 'Hall of Fame'], ['news', 'News'], ['tx', 'Transactions']], 'standings');
-  const f = { standings: standingsTab, stories: storiesTab, tstat: teamStatTab, pstat: playerStatTab, records: recordsTab, playoffs: playoffsTab, awards: awardsTab, history: historyTab, hof: hofTab, news: newsTab, tx: txTab }[tb];
+  const top = tabs('league', [['standings', 'Standings'], ['stories', 'Stories'], ['tstat', 'Team Stat'], ['pstat', 'Player Stat'], ['leaders', 'Leaders'], ['records', 'Records'], ['playoffs', 'Playoffs'], ['awards', 'Awards'], ['history', 'History'], ['hof', 'Hall of Fame'], ['news', 'News'], ['tx', 'Transactions']], 'standings');
+  const f = { standings: standingsTab, stories: storiesTab, tstat: teamStatTab, pstat: playerStatTab, leaders: leadersTab, records: recordsTab, playoffs: playoffsTab, awards: awardsTab, history: historyTab, hof: hofTab, news: newsTab, tx: txTab }[tb];
   return { title: 'League', top, body: f(L) };
 };
 function standingsTab(L) {
@@ -858,6 +858,39 @@ function storiesTab(L) {
     <div class="sect">Meetings</div>${lines(s.rivalries, s.gaps.rivalries)}
     <div class="sect">Breakouts</div>${lines(s.breakouts, s.gaps.breakouts)}
     <div class="sect">Big trades</div>${lines(trades, s.gaps.trades)}${s.unlabeledTrades ? `<div class="card plain">${s.unlabeledTrades} trade${s.unlabeledTrades === 1 ? '' : 's'} this season had no player id, so ${s.unlabeledTrades === 1 ? 'it was' : 'they were'} not graded as big or small.</div>` : ''}`;
+}
+function leadersTab(L) {
+  S.leadScope ||= 'nba'; S.leadSide ||= 'reg'; S.leadStat ||= 'pts';
+  const history = (typeof DATA !== 'undefined' && DATA && DATA.history) || L.data?.history || null;
+  if (S.leadScope === 'franchise' && !S.leadFid) S.leadFid = E.franchiseIdOfTeam(T(L.userTid));
+  const board = E.careerBoard(L, { history, scope: S.leadScope === 'nba' ? 'nba' : S.leadFid, side: S.leadSide, stat: S.leadStat });
+  const c = board.coverage;
+  const fmt = (r) => c.rateMin ? (r.value * 100).toFixed(1) : Math.round(r.value).toLocaleString('en-US');
+  const detail = (r) => {
+    if (S.leadStat !== 'gp' || S.leadSide !== 'reg') return r.simulated != null && S.leadStat === 'gp' ? '' : '';
+    const bits = [];
+    if (r.recorded) bits.push(`${r.recorded.toLocaleString('en-US')} recorded before this save`);
+    if (r.simulated) bits.push(`${Math.round(r.simulated).toLocaleString('en-US')} simulated`);
+    return bits.join(' · ');
+  };
+  const scopePills = pillSeg('leadScope', [['nba', 'NBA'], ['franchise', 'Franchise']]);
+  const sidePills = pillSeg('leadSide', [['reg', 'Regular season'], ['po', 'Playoffs']]);
+  const statSel = `<select data-a="leadStat" aria-label="Stat">${E.LEADER_STATS.map(s => `<option value="${s.id}"${S.leadStat === s.id ? ' selected' : ''}>${s.label}</option>`).join('')}</select>`;
+  const franSel = S.leadScope === 'franchise' ? `<select data-a="leadFid" aria-label="Franchise">${board.franchises.map(f => `<option value="${esc(f.id)}"${f.id === S.leadFid ? ' selected' : ''}>${esc(f.label)}</option>`).join('')}</select>` : '';
+  const shown = board.rows.slice(0, 80);
+  const list = shown.map(r => {
+    const team = r.team ? (r.tid != null ? `<span class="plink" data-a="teamPage" data-tid="${r.tid}">${esc(r.team)}</span>` : esc(r.team)) : 'All franchises';
+    const who = r.pid != null ? `<span class="plink" data-a="player" data-pid="${r.pid}">${esc(r.name)}</span>` : esc(r.name);
+    return `<div class="it"><b style="width:28px" class="muted">${r.rank}</b><div class="grow"><div class="nm">${who}${r.retired ? ' <span class="muted">retired</span>' : ''}</div><div class="meta">${team}${detail(r) ? ' · ' + detail(r) : ''}</div></div><b>${fmt(r)}</b></div>`;
+  }).join('');
+  const gap = c.side === 'po'
+    ? c.historicalNote
+    : `${c.historicalNote} Recorded games included: ${c.recordedGames.toLocaleString('en-US')}. Estimated seasons left out: ${c.omittedEstimatedSeasons.toLocaleString('en-US')}. Two-team seasons kept out of franchise totals: ${c.unsplitFranchiseSeasons.toLocaleString('en-US')} (${c.unsplitFranchiseGames.toLocaleString('en-US')} games).`;
+  return `<div class="card plain">${esc(c.simulatedNote)} Cutoff: seasons before ${c.startSeason || 'this save'} are the historical baseline. Later seasons in the history file are not added.</div>
+    ${scopePills}${franSel ? `<div style="padding:0 12px 8px">${franSel}</div>` : ''}${sidePills}<div style="padding:0 12px 8px">${statSel}</div>
+    <div class="card plain">${esc(gap)}${c.rateNote ? ' ' + esc(c.rateNote) : ''}${c.playersLeftOffThisStat ? ` ${c.playersLeftOffThisStat} player${c.playersLeftOffThisStat === 1 ? '' : 's'} left off this list because a season is missing that stat. Missing is not shown as zero.` : ''}${c.simulatedSeasonsWithoutTeamSplit && S.leadScope === 'franchise' ? ` ${c.simulatedSeasonsWithoutTeamSplit} simulated season${c.simulatedSeasonsWithoutTeamSplit === 1 ? '' : 's'} had no team split, so those games stay off every franchise list.` : ''}</div>
+    <div class="list">${list || '<div class="it muted">Nothing qualifies for this list yet.</div>'}</div>
+    ${board.rows.length > shown.length ? `<div class="muted small" style="padding:4px 14px">Showing 80 of ${board.rows.length}.</div>` : ''}`;
 }
 function recordsTab(L) {
   const arch = E.leagueArchive(L); const g = arch.gameRecords, s = arch.seasonRecords;
@@ -1458,6 +1491,8 @@ document.addEventListener('change', (e) => {
   if (el.dataset.ngf) { const k = el.dataset.ngf; let v = el.value; if (v === 'true') v = true; else if (v === 'false') v = false; else if (!isNaN(+v)) v = +v; if (k === 'draftClasses') S.ng.draftClasses = v; else (S.ng.franchise ||= {})[k] = v; render(); return; }
   if (el.dataset.edh) { edUS(el); return; }
   if (el.dataset.ed) { edInput(el, true); return; }
+  if (el.dataset.a === 'leadStat') { S.leadStat = el.value; render(); return; }
+  if (el.dataset.a === 'leadFid') { S.leadFid = el.value; S.leadScope = 'franchise'; render(); return; }
   if (el.dataset.a === 'tteam') { S.trade = { tid: +el.value, a: [], ap: [], b: [], bp: [] }; render(); return; }
   if (el.dataset.a === 'tsel') { const tr = S.trade; const key = el.dataset.side + (el.dataset.kind === 'k' ? 'p' : ''); const id = el.dataset.kind === 'k' ? el.dataset.id : +el.dataset.id; tr[key] = el.checked ? [...tr[key], id] : tr[key].filter(x => x !== id); render(); return; }
   if (el.dataset.a === 'dcgYear') { S.dcgYear = +el.value; render(); return; }
