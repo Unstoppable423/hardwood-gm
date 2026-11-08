@@ -405,7 +405,7 @@ function summerCard(L) {
   return `<div class="card"><h3>Offseason development</h3>${L.progressNote ? esc(L.progressNote) : "Players aged a year. Here's how your roster changed."}</div><div class="list">${(L.progressReport || []).map(x => { const p = E.getP(L, x.pid); return `<div class="it" data-a="player" data-pid="${x.pid}">${avatar(p, 36)}<div class="grow"><div class="nm">${esc(x.name)}</div><div class="meta">Age ${x.age} · ${devWord(p)}</div></div><b class="${x.d > 0 ? 'tg' : x.d < 0 ? 'tr' : ''}">${x.d > 0 ? '▲' : x.d < 0 ? '▼' : ''}${Math.abs(x.d) || '–'}</b>${sq(x.ovr)}</div>`; }).join('')}</div>`;
 }
 function seriesList(series) {
-  return `<div class="list">${series.map(s => `<div class="it">${disc(s.hi, 30)}<div class="grow center"><div class="nm" style="font-size:13px">(${s.hiSeed}) ${T(s.hi).abbr}  ${s.wh} - ${s.wl}  ${T(s.lo).abbr} (${s.loSeed})</div><div class="meta">${s.winner != null ? `${T(s.winner).abbr} win series` : `best of ${s.len}`}</div></div>${disc(s.lo, 30)}</div>`).join('')}</div>`;
+  return `<div class="list">${series.map(s => `<div class="it" data-a="brOpen" data-id="${esc(s.id)}">${disc(s.hi, 30)}<div class="grow center"><div class="nm" style="font-size:13px">(${s.hiSeed}) ${T(s.hi).abbr}  ${s.wh} - ${s.wl}  ${T(s.lo).abbr} (${s.loSeed})</div><div class="meta">${s.winner != null ? `${T(s.winner).abbr} win series` : `best of ${s.len}`}</div></div>${disc(s.lo, 30)}</div>`).join('')}</div>`;
 }
 
 // ---------- MY TEAM (any team) ----------
@@ -940,19 +940,38 @@ function recordsTab(L) {
   <div class="sect">Season averages</div><div class="card">${['pts', 'reb', 'ast', 'stl', 'blk'].map(k => s[k] ? `<div class="kv"><span>${k.toUpperCase()}/G</span><b>${s[k].v} · ${esc(s[k].name)} (${s[k].season})</b></div>` : '').join('') || '<div class="muted">Written when a season in this save finishes.</div>'}</div>
   ${['pts', 'reb', 'ast'].map(k => `<div class="sect">Career ${k.toUpperCase()} (this league)</div><div class="list">${top(k).map(x => `<div class="it" data-a="player" data-pid="${x.p.pid}"><div class="grow nm">${esc(x.p.name)}</div><b>${x.t[k]}</b></div>`).join('') || '<div class="it muted">—</div>'}</div>`).join('')}`;
 }
-function bracketView(L) {
-  const P = L.playoffs; const rounds = [...new Set(P.series.map(s => s.round))].sort((a, b) => a - b); const maxR = Math.max(...rounds);
-  const cell = (s) => { const w = s.winner; const ln = (tid, seed, wins) => `<div class="brl ${w === tid ? 'win' : w != null ? 'out' : ''}"><span class="sd">${seed ?? ''}</span>${esc(T(tid).abbr)}<b>${wins}</b></div>`;
-    return `<div class="brs ${S.brSel === s.id ? 'sel' : ''}" data-a="brSel" data-id="${s.id}">${ln(s.hi, s.hiSeed, s.wh)}${ln(s.lo, s.loSeed, s.wl)}</div>`; };
-  const col = (conf, r) => `<div class="brc"><div class="brh">${r === maxR ? 'Finals' : r === maxR - 1 ? 'Conf F' : 'Rd ' + r}</div>${P.series.filter(s => s.round === r && (r === maxR || s.conf === conf)).sort((a, b) => a.slot - b.slot).map(cell).join('')}</div>`;
-  const cols = [...rounds.filter(r => r < maxR).map(r => col('W', r)), col(null, maxR), ...rounds.filter(r => r < maxR).reverse().map(r => col('E', r))];
-  const sel = P.series.find(s => s.id === S.brSel);
-  const games = sel ? `<div class="sect">${esc(T(sel.hi).abbr)} vs ${esc(T(sel.lo).abbr)} · ${sel.wh}-${sel.wl}</div><div class="list">${(sel.games || []).map((g, i) => `<div class="it" ${L.games[g.gid] ? `data-a="box" data-gid="${g.gid}"` : ''}><b style="width:56px">Game ${i + 1}</b><div class="grow">${esc(T(g.a).abbr)} ${g.as} @ ${esc(T(g.h).abbr)} ${g.hs}</div></div>`).join('') || '<div class="it muted">Not started.</div>'}</div>` : '<div class="muted small" style="padding:4px 14px">Tap a series to see its games.</div>';
-  return `<div class="muted small" style="padding:2px 14px">West ← → East</div><div class="bracket">${cols.join('')}</div>${games}`;
+function sideRow(side) {
+  if (side?.pending) return `<div class="pside"><span class="sd"></span><span class="nm">${esc(side.label || 'Winner to be decided')}</span></div>`;
+  const cls = side.win ? 'win' : side.out ? 'out' : '';
+  return `<div class="pside ${cls}"><span class="sd">${side.seed ?? ''}</span><span class="nm">${esc(side.city ? side.city + ' ' + side.name : side.name)}</span><b>${side.wins ?? 0}</b></div>`;
+}
+function seriesDetail(card) {
+  if (!card) return '<div class="muted small" style="padding:4px 14px">Tap a series for its games and performers.</div>';
+  const games = card.games.length ? card.games.map(g => `<div class="it" ${g.hasBox ? `data-a="box" data-gid="${esc(g.gid)}"` : ''}><b style="width:64px">Game ${g.n}</b><div class="grow">${esc(g.text)}</div>${g.hasBox ? '<span class="muted">Box</span>' : ''}</div>`).join('') : '<div class="it muted">No games stored.</div>';
+  const teamBlock = (side) => {
+    if (!side || side.pending) return '';
+    const rows = (card.performers?.[side.tid] || []);
+    return `<div class="sect">${esc(side.abbr)}</div><div class="list">${rows.length ? rows.map(p => `<div class="it" ${p.pid != null ? `data-a="player" data-pid="${p.pid}"` : ''}><div class="grow"><div class="nm">${esc(p.name || 'Unknown player')}</div><div class="meta">${p.gp} game${p.gp === 1 ? '' : 's'} with a box</div></div><div class="meta">${p.pts} pts · ${p.reb} reb · ${p.ast} ast</div></div>`).join('') : '<div class="it muted">No saved line for this team.</div>'}</div>`;
+  };
+  return `<div class="card r"><div class="plain">${esc(card.scoreNote)}</div>${card.advances ? `<div class="pnote">${esc(card.advances)}</div>` : ''}${card.clincher ? `<div class="plain">${esc(card.clincher)}</div>` : ''}${card.disagree ? `<div class="plain">${esc(card.disagree)}</div>` : ''}<div class="pnote">${esc(card.coverage)}</div></div>
+    <div class="list">${games}</div>${teamBlock(card.hi)}${teamBlock(card.lo)}`;
+}
+function seriesButton(card) {
+  const sel = S.brSel === card.id ? ' sel' : '';
+  return `<button class="pser${sel}" data-a="brSel" data-id="${esc(card.id)}">${sideRow(card.hi)}${sideRow(card.lo)}<div class="pnote">${esc(card.scoreNote)}</div></button>${S.brSel === card.id ? seriesDetail(card) : ''}`;
 }
 function playoffsTab(L) {
-  const P = L.playoffs; if (!P) return `<div class="card muted">Playoffs begin after the regular season. Top 8 per conference qualify; round 1 is best-of-5, then best-of-7.</div>`;
-  return bracketView(L) + [1, 2, 3, 4].filter(r => P.series.some(s => s.round === r)).map(r => `<div class="sect">${['First Round', 'Conference Semifinals', 'Conference Finals', 'Finals'][r - 1]}</div>${seriesList(P.series.filter(s => s.round === r))}`).join('') + (P.champ != null ? `<div class="card center">${disc(P.champ, 56)}<div class="big">${esc(T(P.champ).name)}</div><div class="muted">Champions</div></div>` : '');
+  const b = E.playoffBoard(L);
+  if (b.kind === 'not-started') return `<div class="card plain">${esc(b.note)}</div>`;
+  if (b.kind === 'projected') {
+    const cols = b.conferences.map(c => `<div class="sect">${esc(c.name)} · not started</div>${c.pairs.map(p => `<div class="pser"><div class="pside"><span class="sd">${p.hi.seed}</span><span class="nm">${esc(p.hi.city)} ${esc(p.hi.name)}</span></div><div class="pside"><span class="sd">${p.lo.seed}</span><span class="nm">${esc(p.lo.city)} ${esc(p.lo.name)}</span></div><div class="pnote">Series not created · best of ${p.len} · no score</div></div>`).join('')}`).join('');
+    return `<div class="card plain">${esc(b.note)}</div><div class="card plain">${esc(b.fieldNote)}</div>${cols}${b.pastGap ? `<div class="card plain">${esc(b.pastGap)}</div>` : ''}`;
+  }
+  const season = b.kind === 'archive' ? `<div class="card plain">${seasonLbl(b.season)} bracket, stored with that season. ${esc(b.pastGap || '')}</div>` : '';
+  const confs = b.conferences.map(c => c.rounds.map(r => `<div class="sect">${esc(c.name)} · ${esc(r.name)}</div>${r.series.map(seriesButton).join('')}`).join('')).join('');
+  const fin = b.finals ? `<div class="sect">Finals</div>${seriesButton(b.finals)}` : '';
+  const champ = b.champ ? `<div class="card center">${disc(b.champ.tid, 56)}<div class="big">${esc(b.champ.city)} ${esc(b.champ.name)}</div><div class="muted">Champions</div></div>` : '';
+  return `<div class="card plain">${esc(b.note)}</div>${season}${confs}${fin}${champ}`;
 }
 function awardCard(h) {
   const aw = h.awards;
@@ -1557,6 +1576,7 @@ const A = {
   draftToMe() { const L = S.L, D = L.draft; const sl = D.order[D.idx]; if (sl && E.draftControls(L, sl.tid)) E.draftAutoOne(L);
     if (L.settings.draftAll || (L.draftTeams || []).length) { while (D.idx < D.order.length && D.order[D.idx].tid !== L.userTid) if (!E.draftAutoOne(L)) break; } else E.draftUntilUser(L); autosave(); render(); },
   brSel(d) { S.brSel = S.brSel === d.id ? null : d.id; const y = pageY(); render(); pageTo(y); },
+  brOpen(d) { S.brSel = d.id; S.tab.league = 'playoffs'; root('league'); },
   simOneDay() { const L = S.L; if (L.phase === 'REGULAR' && E.seasonDone(L)) return toast('Regular season is over'); E.simDay(L); autosave(); render(); },
   draftMode(d) { const L = S.L; L.draft.modeChosen = true; L.settings.draftAll = d.v === 'all'; if (d.v === 'mine') E.draftUntilUser(L); autosave(); render(); },
   draftAllTog() { const L = S.L; L.settings.draftAll = !L.settings.draftAll; autosave(); render(); toast(L.settings.draftAll ? 'You now make every pick' : 'CPU teams pick for themselves'); },

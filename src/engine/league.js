@@ -544,7 +544,8 @@ export let cpuTrade = () => {};
 export function setCpuTrade(fn) { cpuTrade = fn; }
 
 // ---------- playoffs ----------
-export function startPlayoffs(L) {
+// Who makes the field, and which seeds meet. Does not create series or play games.
+export function playoffShape(L) {
   const rec = standings(L);
   // franchise setting: 16 / 8 / 4 playoff teams (8 / 4 / 2 per conference); fewer teams start at a later round
   let k = { 16: 8, 8: 4, 4: 2 }[L.settings.playoffTeams] || 8;
@@ -556,6 +557,10 @@ export function startPlayoffs(L) {
   const r0 = { 8: 1, 4: 2, 2: 3 }[k];
   const seeds = { E: confSeeds(L, 'E', rec).slice(0, k).map(r => r.tid), W: confSeeds(L, 'W', rec).slice(0, k).map(r => r.tid) };
   const pairs = { 8: [[0, 7], [3, 4], [2, 5], [1, 6]], 4: [[0, 3], [1, 2]], 2: [[0, 1]] }[k];
+  return { k, r0, seeds, pairs };
+}
+export function startPlayoffs(L) {
+  const { r0, seeds, pairs } = playoffShape(L);
   const series = [];
   for (const c of ['E', 'W']) pairs.forEach(([a, b], i) => series.push({ id: `${c}${r0}-${i}`, round: r0, conf: c, slot: i, hi: seeds[c][a], lo: seeds[c][b], hiSeed: a + 1, loSeed: b + 1, wh: 0, wl: 0, games: [], len: seriesLen(L, 1) }));
   L.playoffs = { seeds, series, round: r0, r0, champ: null, gid: 0 };
