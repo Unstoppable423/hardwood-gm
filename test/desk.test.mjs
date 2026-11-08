@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deadlineBoard, scoutReport, ARCHETYPES } from '../src/engine/desk.js';
+import { deadlineBoard, scoutReport, STYLE_COMPS } from '../src/engine/desk.js';
 import { dispRating } from '../src/engine/players.js';
 
 let n = 1;
@@ -85,7 +85,7 @@ test('a shooter matches Miller in 1997 and not a player from the future', () => 
   assert.equal(p.pot, before);
   assert.equal(r.comparison?.name, 'Reggie Miller');
   assert.ok(r.comparison.firstSeason < 1997);
-  assert.ok(!ARCHETYPES.some(a => a.name === 'LeBron James'));
+  assert.ok(!STYLE_COMPS.some(a => a.name === 'LeBron James'));
   assert.match(r.lines.join(' '), /Stylistic likeness, not a career projection/);
   assert.match(r.lines.join(' '), /not a scout quote/);
   const early = scoutReport(p, { draftYear: 1986 });
