@@ -287,6 +287,8 @@ PAGES.home = () => {
     case 'FA1': case 'FA2': case 'FA3': parts.push(faCard(L)); cta.push(`<button class="blue" data-a="nav" data-p="fa">Free Agents</button>`, `<button class="go" data-a="advance">${L.phase === 'FA3' ? 'End Free Agency' : 'Next Week'}</button>`); break;
     case 'SUMMER': parts.push(summerCard(L)); cta.push(`<button class="go" data-a="advance">Preseason</button>`); break;
   }
+  const story = E.seasonStorylines(L); const lead = story.items[0];
+  parts.push(`<div class="card" data-a="nav" data-p="league" data-t="stories"><h3>Season storylines</h3><div style="font-weight:700">${esc(lead.title)}</div><div class="plain">${esc(lead.text)}</div><div class="muted">Meetings, the playoff race, breakouts, and big trades.</div></div>`);
   const nw = L.news.slice(0, 4);
   parts.push(`<div class="sect">League news</div><div class="list">${nw.map(n => `<div class="it"><div class="grow"><div style="font-size:13px">${esc(n.text)}</div><div class="meta">${seasonLbl(n.season)}${n.day ? ' · ' + E.dateOf(L, n.day) : ''}</div></div></div>`).join('') || '<div class="it muted">Nothing yet.</div>'}<div class="it" data-a="nav" data-p="league" data-t="news"><div class="grow muted">All news</div><span class="chev">${icon('back', { s: 18, cls: 'flip' })}</span></div></div>`);
   return { title: `${T(L.userTid).name}`, right: `<button class="rb" data-a="nav" data-p="messages" aria-label="Messages">${icon('mail')}</button>`, top: phaseStrip(L), body: parts.join(''), cta: cta.join('') };
@@ -630,9 +632,10 @@ PAGES.trade = () => {
   const closed = !tradeOpen(L) ? `<div class="card" style="color:var(--q1)">${L.phase === 'PLAYOFFS' ? 'Trades are closed during the playoffs.' : 'The trade deadline has passed. Trades reopen after the season.'}</div>` : '';
   if (tb === 'offers') {
     body = closed + (offers.length ? offers.map(x => { const d = descOffer(L, x.offer); const left = L.phase === 'REGULAR' ? Math.max(0, 14 - (L.day - x.day)) : null;
-      return `<div class="card"><div class="row">${disc(x.offer.tidB, 40)}<div class="grow"><div class="nm">${esc(T(x.offer.tidB).city)} ${esc(T(x.offer.tidB).name)}</div><div class="meta">${left != null ? `Expires in ${left} day(s)` : 'Expires at the end of this phase'}</div></div></div>
+      return `<div class="card"><div class="row">${disc(x.offer.tidB, 40)}<div class="grow"><div class="nm">${x.counter ? '<span class="tag" style="background:var(--hdr)">COUNTER</span> ' : ''}${esc(T(x.offer.tidB).city)} ${esc(T(x.offer.tidB).name)}</div><div class="meta">${left != null ? `Expires in ${left} day(s)` : 'Expires at the end of this phase'}</div></div></div>
+      ${x.counter ? `<div class="plain">${esc(x.note || 'Accept is the only way this trade happens.')}</div>` : ''}
       <div class="grid2" style="margin-top:8px;font-size:13px"><div><div class="muted">You give</div>${d.give}</div><div><div class="muted">You get</div>${d.get}</div></div>
-      <div class="grid3" style="margin-top:8px"><button class="go" data-a="offAccept" data-id="${x.id}">Accept</button><button class="red" data-a="offDecline" data-id="${x.id}">Decline</button><button data-a="offCounter" data-id="${x.id}">Counter</button></div></div>`; }).join('')
+      <div class="grid3" style="margin-top:8px"><button class="go" data-a="offAccept" data-id="${x.id}">${x.counter ? 'Accept counter' : 'Accept'}</button><button class="red" data-a="offDecline" data-id="${x.id}">Decline</button><button data-a="offCounter" data-id="${x.id}">Counter</button></div></div>`; }).join('')
       : `<div class="card muted">No trade offers. Put players on your Trade Block and AI teams that need them — usually contenders — will call with offers. Offers expire after two weeks or at the deadline.</div>`);
     const tx = L.transactions.filter(t => t.type === 'trade').slice(0, 10);
     body += `<div class="sect">Recent league trades</div><div class="list">${tx.map(t => `<div class="it" style="font-size:13px">${esc(t.text)}</div>`).join('') || '<div class="it muted">None yet.</div>'}</div>`;
@@ -671,7 +674,8 @@ function tradeMachine(L) {
   return `<div class="card"><div class="muted">Trade partner</div><select data-a="tteam">${teamsAZ(L).filter(t => t.tid !== L.userTid).map(t => `<option value="${t.tid}" ${t.tid === tr.tid ? 'selected' : ''}>${esc(t.city)} ${esc(t.name)}</option>`).join('')}</select>
   ${ev ? (() => { const fb = E.tradeFeedback(L, o); return `<div style="margin-top:10px"><div class="agent ${fb.ok ? 'ok' : ''}"><div class="who">${esc(fb.from || T(tr.tid).city + ' GM')}${fb.mode ? ` · ${{ contend: 'Contending', rebuild: 'Rebuilding', middle: 'Middle of the pack' }[fb.mode]}` : ''}</div>${fb.lines.map(l => `<div>${esc(l)}</div>`).join('')}${fb.suggest ? `<button class="sm go" data-a="tAddSuggest" data-kind="${fb.suggest.kind}" data-id="${fb.suggest.id}">Add ${esc(fb.suggest.name)}</button>` : ''}</div>
   ${ev.need ? `<div class="kv" style="margin-top:6px"><span>Deal value</span><b class="${ev.ok ? 'tg' : ''}">${pct}%</b></div><div class="bar"><i style="width:${pct}%;background:${ev.ok ? 'var(--q4)' : 'var(--gold)'}"></i></div>` : ''}</div>`; })() : '<div class="muted" style="margin-top:8px">Pick players and picks from both sides.</div>'}
-  <div class="grid2" style="margin-top:10px"><button class="go" data-a="propose" ${ev?.ok && tradeOpen(L) ? '' : 'disabled'}>Propose</button><button data-a="tclear">Clear</button></div></div>
+  <div class="grid2" style="margin-top:10px"><button class="go" data-a="propose" ${ev?.ok && tradeOpen(L) ? '' : 'disabled'}>Propose</button><button data-a="tclear">Clear</button></div>
+  ${ev && !ev.ok && tradeOpen(L) ? `<button class="blue" style="width:100%;margin-top:8px" data-a="askCounter">Ask for a counter</button><div class="muted">A counter is saved under Offers. Your players and picks stay put until you tap Accept counter.</div>` : ''}</div>
   <div class="sect">You send</div><div class="list">${mine.map(p => prow(p, 'a')).join('')}${myPicks.map(k => krow(k, 'a')).join('')}</div>
   <div class="sect">You receive · ${esc(T(tr.tid).name)}</div><div class="list">${theirs.map(p => prow(p, 'b')).join('')}${thPicks.map(k => krow(k, 'b')).join('')}</div>`;
 }
@@ -780,8 +784,8 @@ function draftBoard(L) { // pre-draft scouting board (any phase)
 // ---------- LEAGUE ----------
 PAGES.league = () => {
   const L = S.L; const tb = curTab('league', 'standings');
-  const top = tabs('league', [['standings', 'Standings'], ['tstat', 'Team Stat'], ['pstat', 'Player Stat'], ['records', 'Records'], ['playoffs', 'Playoffs'], ['awards', 'Awards'], ['history', 'History'], ['hof', 'Hall of Fame'], ['news', 'News'], ['tx', 'Transactions']], 'standings');
-  const f = { standings: standingsTab, tstat: teamStatTab, pstat: playerStatTab, records: recordsTab, playoffs: playoffsTab, awards: awardsTab, history: historyTab, hof: hofTab, news: newsTab, tx: txTab }[tb];
+  const top = tabs('league', [['standings', 'Standings'], ['stories', 'Stories'], ['tstat', 'Team Stat'], ['pstat', 'Player Stat'], ['records', 'Records'], ['playoffs', 'Playoffs'], ['awards', 'Awards'], ['history', 'History'], ['hof', 'Hall of Fame'], ['news', 'News'], ['tx', 'Transactions']], 'standings');
+  const f = { standings: standingsTab, stories: storiesTab, tstat: teamStatTab, pstat: playerStatTab, records: recordsTab, playoffs: playoffsTab, awards: awardsTab, history: historyTab, hof: hofTab, news: newsTab, tx: txTab }[tb];
   return { title: 'League', top, body: f(L) };
 };
 function standingsTab(L) {
@@ -805,12 +809,22 @@ function playerStatTab(L) {
   return `${pillSeg('statPos', ['All', ...E.POS].map(x => [x, x]))}${pillSeg('statExp', [[0, 'All'], [1, 'Rookie'], [2, '2nd'], [3, '3rd'], [4, '4th'], [5, '5th']])}<div class="pill-seg">${th('pts', 'PTS')}${th('reb', 'REB')}${th('ast', 'AST')}${th('stl', 'STL')}${th('blk', 'BLK')}${th('fg', 'FG%')}${th('fnt', 'FntPt')}</div>
   <div class="list">${ps.map((x, i) => `<div class="it" data-a="player" data-pid="${x.p.pid}"><b style="width:22px" class="muted">${i + 1}</b>${avatar(x.p, 34)}<div class="grow"><div class="nm">${esc(x.p.name)}</div><div class="meta">${x.p.pos} · ${T(x.p.tid).abbr} · ${x.p.stats.reg.gp} GP</div></div><b>${x.v.toFixed(1)}</b></div>`).join('') || '<div class="it muted">No games played yet.</div>'}</div>`;
 }
+function storiesTab(L) {
+  const s = E.seasonStorylines(L);
+  const lines = (rows, gap) => `<div class="card">${rows.length ? rows.map(r => `<div class="plain" style="padding:7px 0;border-bottom:1px solid var(--line)">${esc(r.text)}</div>`).join('') : `<div class="plain">${esc(gap)}</div>`}</div>`;
+  const trades = s.trades.map(t => ({ text: `${t.text} ${t.note}` }));
+  return `<div class="card plain">${esc(s.scope)}</div>
+    <div class="sect">Playoff race</div>${lines(s.race.ready ? s.race.rows : [], s.gaps.races)}
+    <div class="sect">Meetings</div>${lines(s.rivalries, s.gaps.rivalries)}
+    <div class="sect">Breakouts</div>${lines(s.breakouts, s.gaps.breakouts)}
+    <div class="sect">Big trades</div>${lines(trades, s.gaps.trades)}${s.unlabeledTrades ? `<div class="card plain">${s.unlabeledTrades} trade${s.unlabeledTrades === 1 ? '' : 's'} this season had no player id, so ${s.unlabeledTrades === 1 ? 'it was' : 'they were'} not graded as big or small.</div>` : ''}`;
+}
 function recordsTab(L) {
-  const g = L.records.game, s = L.records.season;
-  const careers = L.players.filter(p => p.career.length).map(p => ({ p, t: E.careerTotals(p) }));
+  const arch = E.leagueArchive(L); const g = arch.gameRecords, s = arch.seasonRecords;
+  const careers = L.players.filter(p => p.career?.length).map(p => ({ p, t: E.careerTotals(p) }));
   const top = (k) => careers.sort((a, b) => b.t[k] - a.t[k]).slice(0, 5);
-  return `<div class="sect">Single game (since 1996-97)</div><div class="card">${['pts', 'reb', 'ast'].map(k => g[k] ? `<div class="kv"><span>${k.toUpperCase()}</span><b>${g[k].v} · ${esc(g[k].name)} (${g[k].season})</b></div>` : '').join('') || '<div class="muted">No games yet.</div>'}</div>
-  <div class="sect">Season averages</div><div class="card">${['pts', 'reb', 'ast', 'stl', 'blk'].map(k => s[k] ? `<div class="kv"><span>${k.toUpperCase()}/G</span><b>${s[k].v} · ${esc(s[k].name)} (${s[k].season})</b></div>` : '').join('') || '<div class="muted">After the first season.</div>'}</div>
+  return `<div class="card plain">${esc(arch.recordsScope)}</div><div class="sect">Single game</div><div class="card">${['pts', 'reb', 'ast'].map(k => g[k] ? `<div class="kv"><span>${k.toUpperCase()}</span><b>${g[k].v} · ${esc(g[k].name)} (${g[k].season})</b></div>` : '').join('') || '<div class="muted">No simulated games yet.</div>'}</div>
+  <div class="sect">Season averages</div><div class="card">${['pts', 'reb', 'ast', 'stl', 'blk'].map(k => s[k] ? `<div class="kv"><span>${k.toUpperCase()}/G</span><b>${s[k].v} · ${esc(s[k].name)} (${s[k].season})</b></div>` : '').join('') || '<div class="muted">Written when a season in this save finishes.</div>'}</div>
   ${['pts', 'reb', 'ast'].map(k => `<div class="sect">Career ${k.toUpperCase()} (this league)</div><div class="list">${top(k).map(x => `<div class="it" data-a="player" data-pid="${x.p.pid}"><div class="grow nm">${esc(x.p.name)}</div><b>${x.t[k]}</b></div>`).join('') || '<div class="it muted">—</div>'}</div>`).join('')}`;
 }
 function bracketView(L) {
@@ -827,15 +841,28 @@ function playoffsTab(L) {
   const P = L.playoffs; if (!P) return `<div class="card muted">Playoffs begin after the regular season. Top 8 per conference qualify; round 1 is best-of-5, then best-of-7.</div>`;
   return bracketView(L) + [1, 2, 3, 4].filter(r => P.series.some(s => s.round === r)).map(r => `<div class="sect">${['First Round', 'Conference Semifinals', 'Conference Finals', 'Finals'][r - 1]}</div>${seriesList(P.series.filter(s => s.round === r))}`).join('') + (P.champ != null ? `<div class="card center">${disc(P.champ, 56)}<div class="big">${esc(T(P.champ).name)}</div><div class="muted">Champions</div></div>` : '');
 }
+function awardCard(h) {
+  const aw = h.awards;
+  const row = (k, label) => aw?.[k] ? `<div class="kv"><span>${label}</span><b>${aw[k].pid != null ? `<span class="plink" data-a="player" data-pid="${aw[k].pid}">${esc(aw[k].name)}</span>` : esc(aw[k].name || '—')}</b></div>` : '';
+  return `<div class="card">${h.missingAwards ? '<div class="muted">Awards were not stored for this season.</div>' : `${row('mvp', 'MVP')}${row('fmvp', 'Finals MVP')}${row('dpoy', 'Defensive POY')}${row('roy', 'Rookie of the Year')}${row('sixth', 'Sixth Man')}${row('mip', 'Most Improved')}` || '<div class="muted">No award names stored.</div>'}</div>`;
+}
 function awardsTab(L) {
   const pow = (L.pow || []).filter(x => x.season === L.season).slice(0, 30);
-  const h = L.history.at(-1);
-  return `<div class="sect">Player of the Week · ${seasonLbl(L.season)}</div><div class="list">${pow.map(x => `<div class="it" data-a="player" data-pid="${x.pid}">${disc(x.tid, 30)}<div class="grow"><div class="nm">${esc(x.name)}</div><div class="meta">Week ${x.week} · ${x.conf === 'E' ? 'East' : 'West'}</div></div></div>`).join('') || '<div class="it muted">Awarded weekly during the regular season.</div>'}</div>
-  ${h ? `<div class="sect">${seasonLbl(h.season)} season awards</div><div class="card">${[['mvp', 'MVP'], ['fmvp', 'Finals MVP'], ['dpoy', 'Defensive POY'], ['roy', 'Rookie of the Year'], ['sixth', 'Sixth Man'], ['mip', 'Most Improved']].map(([k, l]) => h.awards[k] ? `<div class="kv"><span>${l}</span><b data-a="player" data-pid="${h.awards[k].pid}">${esc(h.awards[k].name)}</b></div>` : '').join('')}</div>` : ''}`;
+  const arch = E.leagueArchive(L);
+  return `<div class="card plain">${esc(arch.scope)}</div><div class="sect">Player of the Week · ${seasonLbl(L.season)}</div><div class="list">${pow.map(x => `<div class="it" data-a="player" data-pid="${x.pid}">${disc(x.tid, 30)}<div class="grow"><div class="nm">${esc(x.name)}</div><div class="meta">Week ${x.week} · ${x.conf === 'E' ? 'East' : 'West'}</div></div></div>`).join('') || '<div class="it muted">Awarded weekly during the regular season.</div>'}</div>
+  ${arch.seasons.slice().reverse().map(h => `<div class="sect">${h.season ? seasonLbl(h.season) : 'Season'} awards</div>${awardCard(h)}`).join('') || '<div class="card muted">No season awards yet.</div>'}`;
 }
 function historyTab(L) {
-  const H = L.history.slice().reverse();
-  return `<div class="tscroll"><table><tr><th>Season</th><th class="l">Champion</th><th class="l">MVP</th><th class="l">ROY</th></tr>${H.map(h => `<tr><td>${seasonLbl(h.season)}</td><td class="l">${esc(T(h.champ).name)}</td><td class="l">${esc(h.awards.mvp?.name || '')}</td><td class="l">${esc(h.awards.roy?.name || '—')}</td></tr>`).join('') || '<tr><td colspan="4" class="l muted">History is written at the end of each season.</td></tr>'}</table></div>`;
+  const a = E.leagueArchive(L);
+  if (!a.seasons.length) return `<div class="card plain">${esc(a.scope)}</div><div class="card plain">${esc(a.priorNote)}</div><div class="card muted">No champion is stored yet. A season is added here when that season in this save reaches the awards.</div>`;
+  return `<div class="card plain">${esc(a.scope)}</div><div class="card plain">${esc(a.priorNote)}</div>${a.seasons.slice().reverse().map(h => `<div class="sect">${h.season ? seasonLbl(h.season) : 'Season'}</div><div class="card">
+    <div class="kv"><span>Champion</span><b>${h.champName ? esc(h.champName) : 'Team not in this save'}</b></div>
+    <div class="kv"><span>Runner-up</span><b>${h.runnerName ? esc(h.runnerName) : (h.runnerUp == null ? '—' : 'Team not in this save')}</b></div>
+    ${h.missingAwards ? '<div class="muted">Awards were not stored for this season.</div>' : ''}
+    ${h.leaders?.pts ? `<div class="kv"><span>Scoring</span><b>${esc(h.leaders.pts.name)} ${h.leaders.pts.v}</b></div>` : ''}
+    ${h.leaders?.reb ? `<div class="kv"><span>Rebounding</span><b>${esc(h.leaders.reb.name)} ${h.leaders.reb.v}</b></div>` : ''}
+    ${h.leaders?.ast ? `<div class="kv"><span>Assists</span><b>${esc(h.leaders.ast.name)} ${h.leaders.ast.v}</b></div>` : ''}
+  </div>`).join('')}`;
 }
 function hofTab(L) {
   let hof = L.hof.slice().reverse(); if (S.hofMine) hof = hof.filter(h => (h.tids || []).includes(L.userTid));
@@ -1326,6 +1353,13 @@ const A = {
     const r = E.executeMultiTrade(L, ct.teams.slice(), moves); if (!r.ok) return toast(r.error); ct.mv = {}; toast('Trade done');
     (L.inbox ||= []).unshift({ id: L.msgId++, season: L.season, day: L.day, from: 'Commissioner', subject: 'Trade completed', body: r.text, read: false }); autosave(); render(); },
   propose() { const L = S.L, tr = S.trade; const o = { tidA: L.userTid, tidB: tr.tid, aPids: tr.a, aPicks: tr.ap, bPids: tr.b, bPicks: tr.bp }; const ev = E.evaluateTrade(L, o); if (!ev.ok) return toast(ev.error); const t = E.executeTrade(L, o); L.inbox.unshift({ id: L.msgId++, season: L.season, day: L.day, from: 'Front Office', subject: 'Trade completed', body: t, read: false }); toast('Trade accepted!'); S.trade = null; autosave(); if (L.phase === 'DRAFT' && S.fromDraft) { S.fromDraft = false; S.tab.draft = 'avail'; return root('draft'); } render(); },
+  askCounter() {
+    const L = S.L, tr = S.trade; if (!tr) return;
+    const o = { tidA: L.userTid, tidB: tr.tid, aPids: [...tr.a], aPicks: [...tr.ap], bPids: [...tr.b], bPicks: [...tr.bp] };
+    const row = E.fileCounter(L, o);
+    if (!row) return toast(E.evaluateTrade(L, o).error || 'No legal counter. Your roster is unchanged.');
+    toast('Counter saved under Offers. Nothing has moved.'); S.tab.trade = 'offers'; autosave(); render();
+  },
   staffRole(d) { S.staffRole = d.r; render(); },
   hire(d) { const r = E.hireStaff(S.L, +d.sid); if (!r.ok) return toast(r.error); toast('Hired!'); autosave(); render(); },
   promoteAC() { if (!confirm('Promote your assistant to head coach? Your current head coach leaves.')) return; const r = E.promoteAssistant(S.L); if (!r.ok) return toast(r.error); toast('Promoted to head coach'); autosave(); render(); },

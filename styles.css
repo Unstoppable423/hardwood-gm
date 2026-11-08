@@ -256,3 +256,4 @@ table.full tr>:first-child{position:sticky;left:0;background:var(--card);z-index
 .st-pot{position:absolute;left:0;top:0;width:100%;overflow:hidden;opacity:.5}
 .st-pot.h{width:50%}
 .st-half.f{width:100%}
+.plain{font-size:13px;line-height:1.35;text-transform:none;letter-spacing:0;color:var(--ink)}
