@@ -9,7 +9,7 @@ import { applyArc, careerOf, normName, careerMode, realTeamTid, arcYearsFrom, ap
 import { taxActive, taxLine, applyRules, stableRosters } from './franchise.js';
 import { capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, LOTTERY_WEIGHTS, PHASES } from './constants.js';
 import { marketValue, progress, anchorRatings, attrTops, anchorAttrTails, longevity, devTrait, capFictional, floorReal, generateVeteran, generateProspect, prospectFromReal, dispRating, ovrFromAttrs, eligiblePos } from './players.js';
-import { HOOKS, teamPlayers, getP, reindex, payroll, cap, msg, msgBatch, news, diff, teamName, teamOvr, standings, confSeeds, makeSchedule,
+import { HOOKS, teamPlayers, getP, reindex, payroll, cap, msg, msgBatch, news, diff, teamName, teamOvr, standings, confSeeds, makeSchedule, clearLineup,
   startPlayoffs, seasonDone, resetSeasonStats, prodScore, createDraftClass, addPicksForSeason, ensureFuturePicks, genStaff, staffEffects, draftControls, logTx } from './league.js';
 
 // ================= phase machine =================
@@ -80,7 +80,7 @@ export function startPreseason(L, first = false) {
     createDraftClass(L, L.season);
   }
   for (const p of L.players) if (p.tid !== -3) resetSeasonStats(p, L.season);
-  for (const t of L.teams) if (!t.inactive) { t.mleUsed = false; if (t.tid !== L.userTid || t.autoRotation) t.rotation = null; }
+  for (const t of L.teams) if (!t.inactive) { t.mleUsed = false; if (!t.manualLineup && (t.tid !== L.userTid || t.autoRotation)) t.rotation = null; }
   applyEraRules(L); applyHistory(L, 'preseason');
   makeSchedule(L);
   setExpectation(L);
@@ -177,6 +177,8 @@ export function releaseConsequence(L, p) {
 }
 export function release(L, p, auto = false) {
   if (!p || p.tid < 0) return;
+  const club = L.teams[p.tid];
+  if (club?.manualLineup && club.rotation?.starters?.includes(p.pid)) clearLineup(club);
   const hit = releaseConsequence(L, p);
   if (hit.dead) L.deadMoney.push({ tid: p.tid, amt: hit.amt, exp: hit.exp, name: p.name });
   logTx(L, { type: 'release', text: `${L.teams[p.tid].abbr} released ${p.name}` }, [p.pid]);

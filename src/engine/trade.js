@@ -1,7 +1,7 @@
 import { rand, shuffle, clamp, randInt } from './rng.js';
 import { capFor, ROSTER_MAX } from './constants.js';
 import { marketValue, dispRating } from './players.js';
-import { teamPlayers, getP, payroll, cap, msg, news, logTx, diff, standings, teamOvr } from './league.js';
+import { teamPlayers, getP, payroll, cap, msg, news, logTx, diff, standings, teamOvr, clearLineup } from './league.js';
 import { deadlineDay, tradeMargin } from './franchise.js';
 
 export function playerValue(L, p, forTid = null) {
@@ -79,7 +79,7 @@ export function executeMultiTrade(L, tids, moves) {
   if (!moves.length) return { ok: false, error: 'Nothing selected' };
   for (const m of moves) { if (m.pid != null) getP(L, m.pid).tid = m.to; else L.picks.find(k => k.id === m.pick).tid = m.to; }
   syncDraftOrder(L);
-  for (const tid of tids) { const t = L.teams[tid]; if (t.rotation) t.rotation = null; }
+  for (const tid of tids) clearLineup(L.teams[tid]);
   const nm = (m) => m.pid != null ? getP(L, m.pid).name : pickShort(L, m.pick);
   const text = `${tids.length}-team trade: ` + tids.map(t => `${L.teams[t].abbr} get ${moves.filter(m => m.to === t).map(nm).join(', ') || 'nothing'}`).join('; ') + '.';
   news(L, `🔁 ${text}`, 'trade', tids[0]); logTx(L, { type: 'trade', text }, moves.filter(m => m.pid != null).map(m => m.pid));
@@ -107,7 +107,7 @@ export function executeTrade(L, o) {
   for (const id of o.aPicks) L.picks.find(p => p.id === id).tid = o.tidB;
   for (const id of o.bPicks) L.picks.find(p => p.id === id).tid = o.tidA;
   syncDraftOrder(L);
-  for (const tid of [o.tidA, o.tidB]) { const t = L.teams[tid]; if (t.rotation) t.rotation = null; }
+  for (const tid of [o.tidA, o.tidB]) clearLineup(L.teams[tid]);
   const desc = (pids, picks) => [...pids.map(id => getP(L, id).name), ...picks.map(id => pickShort(L, id))].join(', ') || 'nothing';
   const text = `${L.teams[o.tidA].abbr} trade ${desc(o.aPids, o.aPicks)} to ${L.teams[o.tidB].abbr} for ${desc(o.bPids, o.bPicks)}.`;
   if (o.tidA === L.userTid || o.tidB === L.userTid) {

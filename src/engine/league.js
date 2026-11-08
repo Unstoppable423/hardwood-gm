@@ -46,7 +46,7 @@ export function repairSave(L) {
   for (const p of L.players) if (p.tid >= 0 && !p.retired && !p.contract) p.contract = { amt: Math.round(Math.max(minSalary(L.season), marketValue(p, L.season)) / 10) * 10, exp: L.season + 2, signed: L.season, rookie: !!p.draft?.year && p.draft.year >= L.season - 1 };
   // lineups store player ids: drop any lineup that names someone not on that team (stale/colliding ids) so it is rebuilt
   for (const t of L.teams) { const r = t.rotation; if (!r) continue; const ids = new Set(L.players.filter(p => p.tid === t.tid).map(p => p.pid));
-    if (!r.starters?.every(id => ids.has(id)) || new Set(r.starters).size !== r.starters.length || Object.keys(r.minutes || {}).some(id => !ids.has(+id))) t.rotation = null; }
+    if (!r.starters?.every(id => ids.has(id)) || new Set(r.starters).size !== r.starters.length || Object.keys(r.minutes || {}).some(id => !ids.has(+id))) clearLineup(t); }
   markRealStarters(L);
   reindex(L); return fixed;
 }
@@ -106,7 +106,7 @@ export function fdAuto(L, { all = false, one = false } = {}) {
   return n;
 }
 function finishFantasyDraft(L) {
-  const D = L.fdraft; for (const t of L.teams) if (!t.inactive) t.rotation = null;
+  const D = L.fdraft; for (const t of L.teams) if (!t.inactive) clearLineup(t);
   L.fantasyDraft = { season: L.season, order: D.teams, log: D.log }; L.fdraft = null;
   news(L, `Fantasy draft complete. ${L.teams[D.teams[0]].abbr} picked first.`, 'trade'); reindex(L);
 }
@@ -396,15 +396,63 @@ export function confSeeds(L, conf, rec = standings(L)) {
 }
 
 // ---------- season sim ----------
+// A saved starter cannot play: hurt, on the injured list, or no longer on the team.
+function starterMissing(L, tid, id) {
+  const p = getP(L, id);
+  return !p || p.tid !== tid || !!p.injury || !!p.il;
+}
+export function clearLineup(t) {
+  if (!t) return;
+  t.rotation = null;
+  t.manualLineup = false;
+}
+// What the sim will start, without writing it. A team with no saved five uses the coach's
+// automatic five. A saved five is used only while all five can play; otherwise that game
+// falls back to the automatic five and the saved five is left as it is.
+export function lineupPreview(L, tid) {
+  const t = L.teams[tid];
+  const ps = teamPlayers(L, tid).filter(p => !p.il && !p.injury);
+  const auto = autoRotation(ps);
+  const saved = !!(t?.manualLineup && t.autoRotation === false && t.rotation?.starters?.length === 5);
+  const usable = saved && t.rotation.starters.every(id => !starterMissing(L, tid, id));
+  return { source: usable ? 'saved' : 'auto', simIds: usable ? [...t.rotation.starters] : [...auto.starters], saved: saved && !usable, slots: usable ? (t.rotation.slots || null) : (auto.slots || null) };
+}
+const LINE_MIN = [36, 35, 33, 31, 29, 22, 18, 14, 10, 7, 5];
+export function saveManualLineup(L, tid, starterIds) {
+  const t = L.teams[tid];
+  if (!t || t.inactive) return { ok: false, error: 'No such team.' };
+  if (tid === L.userTid) return { ok: false, error: 'Your own starters stay on Reorder.' };
+  const ids = [...starterIds].map(Number);
+  if (ids.length !== 5 || new Set(ids).size !== 5) return { ok: false, error: 'Pick five different starters.' };
+  const picked = ids.map(id => getP(L, id));
+  if (picked.some(p => !p || p.tid !== tid)) return { ok: false, error: 'A chosen player is not on this team.' };
+  if (picked.some(p => p.injury || p.il)) return { ok: false, error: 'An injured or inactive player cannot be saved as a starter.' };
+  const rest = teamPlayers(L, tid).filter(p => !ids.includes(p.pid) && !p.injury && !p.il).sort((a, b) => b.ovr - a.ovr);
+  const order = [...picked, ...rest];
+  const minutes = {};
+  order.forEach((p, i) => { minutes[p.pid] = LINE_MIN[i] ?? 0; });
+  const tot = Object.values(minutes).reduce((a, b) => a + b, 0);
+  const scale = tot > 0 ? 240 / tot : 1;
+  for (const k in minutes) minutes[k] = Math.round(minutes[k] * scale);
+  const slots = {};
+  picked.forEach(p => { if (!slots[p.pos]) slots[p.pos] = p.pid; });
+  t.rotation = { starters: ids, minutes, slots, order: order.map(p => p.pid) };
+  t.manualLineup = true;
+  t.autoRotation = false;
+  return { ok: true };
+}
 export function rosterFor(L, tid) {
   const t = L.teams[tid]; const ps = teamPlayers(L, tid).filter(p => !p.il); // injured-list players sit
+  const view = lineupPreview(L, tid);
   let rot = t.rotation;
-  if (t.autoRotation || !rot || tid !== L.userTid) rot = autoRotation(ps);
-  else {
-    // drop injured from user's rotation; redistribute their minutes automatically
-    const bad = rot.starters.some(id => { const p = getP(L, id); return !p || p.tid !== tid || p.injury; });
-    if (bad) rot = autoRotation(ps);
-  }
+  const userManual = tid === L.userTid && !t.autoRotation && rot?.starters?.length === 5;
+  const otherManual = view.source === 'saved';
+  if (userManual) {
+    // drop injured from the user's rotation for this game only
+    const bad = rot.starters.some(id => starterMissing(L, tid, id));
+    if (bad) rot = autoRotation(ps.filter(p => !p.injury));
+  } else if (otherManual) rot = { ...t.rotation, starters: view.simIds };
+  else rot = autoRotation(ps.filter(p => !p.injury));
   return { tid, abbr: t.abbr, players: ps, rotation: rot, coach: staffEffects(L, tid).coach, scheme: schemeFor(t.staff?.HC, ps) };
 }
 function accumulate(L, box, key, gameMeta) {

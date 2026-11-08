@@ -436,7 +436,7 @@ PAGES.team = (pg0) => {
   else if (tb === 'schedule') body = scheduleTab(L, tid);
   else if (tb === 'history') body = teamHistTab(L, tid);
   else body = capTab(L, tid);
-  return { title: own ? 'My Team' : esc(t.name), right: own && tb === 'roster' ? `<button class="rb" data-a="nav" data-p="reorder">Reorder</button>` : '', top, body };
+  return { title: own ? 'My Team' : esc(t.name), right: tb !== 'roster' ? '' : own ? `<button class="rb" data-a="nav" data-p="reorder">Reorder</button>` : `<button class="rb" data-a="nav" data-p="lineup" data-tid="${tid}">Lineup</button>`, top, body };
 };
 function staffTab(L, tid, own) {
   const t = T(tid); const role = S.staffRole || 'HC';
@@ -535,6 +535,34 @@ PAGES.reorder = () => {
     <div class="sect">Starters</div><div class="list">${ps.slice(0, 5).map(row).join('')}</div><div class="sect">Bench</div><div class="list">${ps.slice(5).map((p, i) => row(p, i + 5)).join('')}</div>` };
 };
 
+// ---------- OTHER TEAM LINEUP (view does not write; Save stores one team) ----------
+PAGES.lineup = (pg0) => {
+  const L = S.L; const tid = pg0.tid != null ? +pg0.tid : S.lineupEdit?.tid;
+  const t = L.teams?.[tid];
+  if (!t || tid === L.userTid) return { title: 'Lineup', body: '<div class="card">This page is for another team. Your own starters are under My Team, Reorder.</div>' };
+  if (!S.lineupEdit || S.lineupEdit.tid !== tid) {
+    const prev0 = E.lineupPreview(L, tid);
+    const SL = ['PG', 'SG', 'SF', 'PF', 'C'];
+    S.lineupEdit = { tid, starters: [...prev0.simIds], slots: prev0.simIds.map((id, i) => (prev0.slots && Object.entries(prev0.slots).find(([, pid]) => pid === id)?.[0]) || SL[i] || '') };
+  }
+  const prev = E.lineupPreview(L, tid);
+  const starters = S.lineupEdit.starters.map(id => E.getP(L, id)).filter(Boolean);
+  const ids = new Set(starters.map(p => p.pid));
+  const bench = E.teamPlayers(L, tid).filter(p => !ids.has(p.pid)).sort((a, b) => b.ovr - a.ovr);
+  const dirty = starters.length !== prev.simIds.length || starters.some((p, i) => p.pid !== prev.simIds[i]);
+  const note = prev.source === 'saved'
+    ? 'Saved starting five. The game starts these players. The roster tab is sorted by rating and is not this list.'
+    : prev.saved
+      ? 'A saved starter is hurt, released, or no longer here, so the next game uses the coach\'s automatic five. The saved five stays until you save a new one. A trade or release of a saved starter clears it.'
+      : 'Coach\'s automatic starting five. Nothing is saved until you tap Save. The roster tab is sorted by rating and is not who starts.';
+  const flag = (p) => p.il ? ' <span class="tag" style="background:var(--q1)">IL</span>' : p.injury ? ` <span class="tag" style="background:var(--q1)">OUT</span>` : '';
+  const row = (p, i, start) => `<div class="it"><b style="width:28px" class="muted">${start ? (S.lineupEdit.slots?.[i] || p.pos) : ''}</b>${avatar(p, 36)}<div class="grow"><div class="nm">${esc(p.name)}${flag(p)}</div><div class="meta">${esc(E.posLabel(p))} · ${R(p.ovr)}</div></div>${sq(p.ovr)}${start ? '' : `<button class="sm" style="min-height:44px" data-a="lineupStart" data-pid="${p.pid}" ${p.injury || p.il ? 'disabled' : ''}>Start</button>`}</div>`;
+  return { title: esc(t.name), body: `<div class="card">${note}${dirty ? ' <b>Unsaved changes.</b>' : ''}</div>
+    <div class="sect">Starting five</div><div class="list">${starters.map((p, i) => row(p, i, true)).join('') || '<div class="it muted">Not enough healthy players.</div>'}</div>
+    <div class="sect">Bench</div><div class="list">${bench.map((p, i) => row(p, i, false)).join('') || '<div class="it muted">No one else.</div>'}</div>
+    <div class="muted" style="padding:6px 14px">Start replaces the starter at the same position, or the lowest-rated starter. Cancel leaves the saved lineup unchanged. Your team and every other team stay as they are.</div>`,
+    cta: `<button style="min-height:44px" data-a="lineupCancel">Cancel</button><button class="go" style="min-height:44px" data-a="lineupSave">Save lineup</button>` };
+};
 // ---------- PLAYER ----------
 PAGES.player = (pg0) => {
   const L = S.L, p = E.getP(L, pg0.pid); if (!p) return { title: 'Player', body: '<div class="card">Not found.</div>' };
@@ -1313,8 +1341,8 @@ const A = {
     }
   },
   drawer() { S.drawer = true; renderDrawer(); }, drawerClose() { S.drawer = false; renderDrawer(); },
-  nav(d) { if (d.t) S.tab[d.p] = d.t; if (d.p === 'team') S.tab.team = d.t || 'roster'; S.drawer = false; S.modal = null; renderModal(); if (['reorder', 'player', 'box'].includes(d.p)) go(d.p); else root(d.p); },
-  back() { if (S.page.n === 'live') { clearInterval(liveTimer); S.live = null; } S.page = S.stack.pop() || { n: 'home' }; render(); pageTo(0);
+  nav(d) { if (d.t) S.tab[d.p] = d.t; if (d.p === 'team') S.tab.team = d.t || 'roster'; S.drawer = false; S.modal = null; renderModal(); if (d.p === 'lineup') return go('lineup', { tid: +d.tid }); if (['reorder', 'player', 'box'].includes(d.p)) go(d.p); else root(d.p); },
+  back() { if (S.page.n === 'live') { clearInterval(liveTimer); S.live = null; } if (S.page.n === 'lineup') S.lineupEdit = null; S.page = S.stack.pop() || { n: 'home' }; render(); pageTo(0);
     const mr = S.modalReturn; if (mr && S.stack.length < mr.depth) { S.modalReturn = null; S.modal = mr.modal; renderModal(); } },
   tab(d) { S.tab[d.g] = d.k; render(); pageTo(0); },
   setS(d) { S[d.k] = isNaN(+d.v) || d.v === '' ? d.v : +d.v; render(); },
@@ -1536,6 +1564,27 @@ const A = {
   promoteAC() { if (!confirm('Promote your assistant to head coach? Your current head coach leaves.')) return; const r = E.promoteAssistant(S.L); if (!r.ok) return toast(r.error); toast('Promoted to head coach'); autosave(); render(); },
   fire(d) { if (!confirm('Fire this staff member?')) return; E.fireStaff(S.L, d.role); autosave(); render(); },
   autoRot() { const t = T(S.L.userTid); t.autoRotation = !t.autoRotation; if (!t.autoRotation) t.rotation = E.autoRotation(E.teamPlayers(S.L, S.L.userTid)); autosave(); render(); },
+  lineupStart(d) {
+    const ed = S.lineupEdit; if (!ed) return;
+    const p = E.getP(S.L, +d.pid);
+    if (!p || p.tid !== ed.tid) return toast('That player is not on this team.');
+    if (p.injury || p.il) return toast('He is hurt or on the injured list, so he will not start.');
+    if (ed.starters.includes(p.pid)) return;
+    const cur = ed.starters.map(id => E.getP(S.L, id)).filter(Boolean);
+    let idx = cur.findIndex(s => s && s.pos === p.pos);
+    if (idx < 0) idx = cur.reduce((bi, s, i, arr) => (s?.ovr ?? 99) < (arr[bi]?.ovr ?? 99) ? i : bi, 0);
+    if (idx < 0) return;
+    ed.starters = ed.starters.slice();
+    ed.starters[idx] = p.pid;
+    render();
+  },
+  lineupCancel() { S.lineupEdit = null; A.back(); },
+  lineupSave() {
+    const ed = S.lineupEdit; if (!ed) return;
+    const r = E.saveManualLineup(S.L, ed.tid, ed.starters);
+    if (!r.ok) return toast(r.error);
+    S.lineupEdit = null; autosave(); toast('Lineup saved'); A.back();
+  },
   mv(d) { const rot = ensureRotation(); const pid = +d.pid; const o = rot.order; const i = o.indexOf(pid), j = i + +d.d; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j], o[i]];
     rot.starters = o.slice(0, 5); for (const s of rot.starters) if ((rot.minutes[s] || 0) < 20) rot.minutes[s] = 28; autosave(); render(); },
   mins(d) { const rot = ensureRotation(); const pid = +d.pid; rot.minutes[pid] = Math.max(0, Math.min(48, (rot.minutes[pid] || 0) + +d.d)); autosave(); render(); },
