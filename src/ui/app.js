@@ -756,7 +756,7 @@ PAGES.fa = () => {
   const poolBtn = E.faPoolOpen(L) ? `<button class="rb" data-a="goto" data-n="fapool" aria-label="Edit FA pool">${icon('pen', { s: 22 })}</button>` : '';
   return { title: 'Free Agents', right: poolBtn, top: `<div class="caprow"><span>Cap Room <b class="${pr <= c ? 'tg' : 'tr'}">${pr <= c ? M(c - pr) : '−' + M(pr - c)}</b></span><span>Space <b>${E.activeCount(L, L.userTid)}/${E.ROSTER_MAX}</b></span><span>${r ? `Week ${r}/3` : L.phase === 'REGULAR' ? 'In-season' : E.PHASE_LABEL[L.phase]}</span></div>` + pillSeg('faPos', ['All', ...E.POS].map(x => [x, x])),
     body: `<div class="muted" style="padding:2px 14px 6px">${r ? 'Offers are decided at the end of each week.' : L.phase === 'REGULAR' ? 'In-season free agents sign 1-year deals and decide right away.' : 'Free agents decide right away outside free agency weeks.'}</div>
-    ${L.phase !== 'REGULAR' && ps.some(p => p.formerTid >= 0) ? `<div style="padding:0 14px 8px"><button class="sm" style="width:100%" data-a="returnFAs">Return free agents to previous teams</button></div>` : ''}
+    ${returnFANote(L)}
     <div class="list">${ps.slice(0, 80).map(p => playerRow(p, { meta: `${p.pos} · Age ${p.age} · asks ${M(E.askingAmount(L, p, L.userTid, ctx, r || 3))}`, extra: (L.fa?.offers?.[p.pid] || []).some(o => o.tid === L.userTid) ? '<span class="tag" style="background:var(--q4)">OFFER</span>' : '' })).join('') || '<div class="it muted">No free agents.</div>'}</div>` };
 };
 
@@ -1154,7 +1154,32 @@ function draftTeamModal() {
   ${tid !== L.userTid && myPicks.length ? `<div class="grid2" style="margin:10px 0">${myPicks.slice(0, 2).map(o => `<button class="blue" data-a="tradePick" data-id="${o.id}">Trade for pick #${o.pick}</button>`).join('')}</div>` : ''}
   <button class="go" style="width:100%;margin:8px 0 16px" data-a="close">Back to draft</button></div>`;
 }
-function modalView() { return ({ offers: offersModal, signTo: signToModal, offer: offerModal, holiday: holidayModal, cut: cutModal, draftTeam: draftTeamModal }[S.modal.type] || (() => ''))(); }
+function returnFANote(L) {
+  const ps = E.freeAgents(L);
+  if (L.phase === 'REGULAR' || !ps.some(p => p.formerTid >= 0)) return '';
+  const plan = E.returnPlan(L);
+  const open = plan.filter(r => !r.full);
+  if (!plan.length) return `<div class="muted" style="padding:0 14px 8px">Some free agents have an old previous-team mark that is not from last season in this save. They stay free agents. A real-life club is never guessed.</div>`;
+  if (!open.length) return `<div class="muted" style="padding:0 14px 8px">Every previous team already has ${E.ROSTER_MAX} active players. Nobody is waived to make a spot, so there is no one to send back.</div>`;
+  return `<div style="padding:0 14px 8px"><button class="blue" style="width:100%;min-height:44px" data-a="returnFAs">Return free agents to previous teams</button></div>`;
+}
+function returnFAModal() {
+  const L = S.L, plan = E.returnPlan(L);
+  const others = plan.filter(r => !r.yours && !r.full);
+  const yours = plan.filter(r => r.yours && !r.full);
+  const full = plan.filter(r => r.full && !r.yours);
+  const yoursFull = plan.filter(r => r.full && r.yours);
+  const inc = !!S.modal.includeUser && yours.length > 0;
+  const n = others.length + (inc ? yours.length : 0);
+  const userN = E.activeCount(L, L.userTid);
+  return sheetHead('Return free agents', 'Previous team in this save') + `<div class="wrap"><div class="card">Each player goes back to the team he was on in this save when he became a free agent. That is not his real-life original team. If this save never recorded a previous team, he stays a free agent. The deal is a fair salary for the longest contract that team can offer. The salary cap is not checked. A team that already has ${E.ROSTER_MAX} active players is skipped, and nobody else is released.</div>
+  <div class="kv"><span>Other teams</span><b>${others.length}</b></div>
+  <div class="kv"><span>Skipped, roster full</span><b>${full.length}</b></div>
+  ${yours.length ? `<button class="${inc ? 'blue' : ''}" style="width:calc(100% - 28px);margin:8px 14px 0;min-height:44px" data-a="returnFAMe">${inc ? 'Will also return' : 'Also return'} ${yours.length} to your team${yours.length === 1 ? '' : 's'}</button>` : ''}
+  ${yoursFull.length ? `<div class="muted" style="padding:8px 14px">${yours.length ? `${yoursFull.length} more of your former players ${yoursFull.length === 1 ? 'does' : 'do'} not fit after those ${yours.length} return.` : `Your roster is already full (${userN}/${E.ROSTER_MAX}), so your former players stay free agents until you clear a spot.`} Nobody is released to make room.</div>` : ''}
+  <div class="grid2" style="margin-top:12px"><button style="min-height:44px" data-a="close">Cancel</button><button class="go" style="min-height:44px" data-a="returnFAGo" ${n ? '' : 'disabled'}>Return ${n}</button></div></div>`;
+}
+function modalView() { return ({ offers: offersModal, signTo: signToModal, offer: offerModal, holiday: holidayModal, cut: cutModal, draftTeam: draftTeamModal, returnFA: returnFAModal }[S.modal.type] || (() => ''))(); }
 const structOK = (L, kind) => kind !== 'ext' && !(L.phase === 'REGULAR' && kind === 'fa');
 function offersModal() {
   const L = S.L, p = E.getP(L, S.modal.pid); const list = (L.tradeOffers || []).filter(x => S.modal.ids.includes(x.id));
@@ -1408,9 +1433,17 @@ const A = {
   signToSheet(d) { S.modal = { type: 'signTo', pid: +d.pid }; renderModal(); },
   signToTeam(d) { const L = S.L, p = E.getP(L, S.modal.pid); const tid = +d.tid; if (E.activeCount(L, tid) >= E.ROSTER_MAX && !confirm(`${L.teams[tid].abbr} already has ${E.ROSTER_MAX} active players. Sign anyway?`)) return;
     E.commissionerSign(L, p, tid); S.modal = null; renderModal(); toast(`${p.name} signed with ${L.teams[tid].abbr}`); autosave(); render(); },
-  returnFAs() { const L = S.L; if (!confirm('Re-sign every free agent who played for a team last season back to that team at a fair contract?')) return;
-    const mine = E.freeAgents(L).filter(p => p.formerTid === L.userTid).length; const inc = mine > 0 && confirm(`Also bring back ${mine} of your own former players to your team?`);
-    const r = E.returnFreeAgents(L, { includeUser: inc }); E.aiRosterFix(L); toast(`${r.length} free agents returned to their teams`); autosave(); render(); },
+  returnFAs() { const plan = E.returnPlan(S.L); if (!plan.some(r => !r.full)) return toast('No free agent can return to a previous team right now.'); S.modal = { type: 'returnFA', includeUser: false }; renderModal(); },
+  returnFAMe() { if (S.modal?.type !== 'returnFA') return; S.modal.includeUser = !S.modal.includeUser; renderModal(); },
+  returnFAGo() {
+    const L = S.L; if (S.modal?.type !== 'returnFA') return;
+    const inc = !!S.modal.includeUser;
+    const r = E.returnFreeAgents(L, { includeUser: inc });
+    S.modal = null; renderModal();
+    const n = r.returned.length, s = r.skippedFull.length;
+    toast(n ? `${n} free agents returned to their previous teams.${s ? ` ${s} stayed free agents because their previous teams are already full.` : ''}` : 'No one returned. Full rosters were left as they are.', 4000);
+    autosave(); render();
+  },
   edPos2(d) { if (!S.ed) return; const m = S.ed.m; const a = new Set(m.pos2 || []); a.has(d.v) ? a.delete(d.v) : a.size < 2 ? a.add(d.v) : toast('Up to 2 secondary positions'); m.pos2 = [...a]; const y = pageY(); render(); pageTo(y); },
   edAll(d) { if (!S.ed) return; const step = +d.d; let tot = 0;
     for (const k of E.EDIT_ATTRS) { const path = 'attrs.' + k; const v = Math.max(40, Math.min(99, (+edGet(path) || 0) + step)); edSet(path, v); tot += v;

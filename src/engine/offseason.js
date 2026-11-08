@@ -873,17 +873,54 @@ export function fairContract(L, p) { return Math.round(clamp(marketValue(p, L.se
 export function commissionerSign(L, p, tid) { L.fa ||= { offers: {}, round: 0 }; L.fa.offers ||= {}; delete L.fa.offers[p.pid]; sign(L, p, tid, fairContract(L, p), commishYears(L, p, tid)); return p; }
 // longest deal the rules allow (previous team = Bird rights / own-player max)
 export function commishYears(L, p, tid) { return maxYears(L, tid === p.formerTid); }
-// Undo free-agent departures: every FA who played for a team last season goes back there on a fair deal.
-// includeUser: also players whose previous team is the user's (needs the user's confirmation in the UI).
-export function returnFreeAgents(L, { includeUser = false } = {}) {
-  const out = []; L.fa ||= { offers: {}, round: 0 }; L.fa.offers ||= {};
+// A free agent's previous team is the club stored on him in this save (formerTid) when that stay
+// was recent. Real-life clubs are never looked up, and a missing or stale mark is not a destination.
+function recentFormerTid(L, p) {
+  const tid = p.formerTid;
+  if (!Number.isInteger(tid) || tid < 0) return null;
+  const t = L.teams[tid];
+  if (!t || t.inactive) return null;
+  const recent = (p.career?.at(-1)?.season ?? 0) >= L.season - 1 || p.stats?.tid === tid;
+  return recent ? tid : null;
+}
+const activeOn = (L, tid) => teamPlayers(L, tid).filter(p => !p.il).length;
+// Who a return would move. `yours` is a team this GM manages. `full` means that roster is already
+// at the active limit once earlier returns in this same pass are counted. Full teams are skipped;
+// nobody is waived to make a spot, and the salary cap is not a gate (this is a commissioner signing).
+export function returnPlan(L) {
+  const managed = managedSet(L);
+  const used = { other: {}, yours: {} };
+  const rows = [];
   for (const p of freeAgents(L)) {
-    const t = L.teams[p.formerTid]; if (!t || t.inactive || p.formerTid < 0) continue;
-    const recent = (p.career?.at(-1)?.season ?? 0) >= L.season - 1 || p.stats?.tid === p.formerTid; if (!recent) continue;
-    if (!includeUser && managedSet(L).has(p.formerTid)) continue;
-    commissionerSign(L, p, p.formerTid); out.push(p);
+    const tid = recentFormerTid(L, p);
+    if (tid == null) continue;
+    const yours = managed.has(tid);
+    const book = yours ? used.yours : used.other;
+    const n = book[tid] ?? activeOn(L, tid);
+    const full = n >= ROSTER_MAX;
+    if (!full) book[tid] = n + 1;
+    rows.push({ pid: p.pid, tid, yours, full });
   }
-  if (out.length) news(L, `${out.length} free agents returned to their previous teams.`, 'fa');
-  ensureFAPool(L);
-  return out;
+  return rows;
+}
+// Undo free-agent departures: every FA who played for a team last season goes back there on a fair deal.
+// includeUser: also players whose previous team is one this GM manages (the UI asks first).
+// A team already at the active roster limit is skipped. This does not waive anyone to clear a spot.
+export function returnFreeAgents(L, { includeUser = false } = {}) {
+  const returned = [], skippedFull = [];
+  L.fa ||= { offers: {}, round: 0 }; L.fa.offers ||= {};
+  const managed = managedSet(L);
+  const used = {};
+  for (const p of freeAgents(L)) {
+    const tid = recentFormerTid(L, p);
+    if (tid == null) continue;
+    if (!includeUser && managed.has(tid)) continue;
+    const n = used[tid] ?? activeOn(L, tid);
+    if (n >= ROSTER_MAX) { skippedFull.push(p); continue; }
+    commissionerSign(L, p, tid);
+    used[tid] = n + 1;
+    returned.push(p);
+  }
+  if (returned.length) { news(L, `${returned.length} free agents returned to their previous teams.`, 'fa'); ensureFAPool(L); }
+  return { returned, skippedFull };
 }
