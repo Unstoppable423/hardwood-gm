@@ -2,6 +2,8 @@
 import * as E from '../engine/index.js';
 import { icon, injIcon, starRow, starRow2, starSvg } from './icons.js';
 import { saveSlot, loadSlot, listSlots, deleteSlot, exportJSON } from './storage.js';
+import { viewportBox } from './viewport.js';
+import { parseImportedSave } from './savefile.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -139,8 +141,20 @@ function render() {
 function fitCta() { const app = $('#app'), c = app?.querySelector('.cta'); const h = (c ? Math.ceil(c.getBoundingClientRect().height) : 0) + 'px'; app?.style.setProperty('--ctaH', h); document.documentElement.style.setProperty('--ctaH', h); }
 window.addEventListener('resize', () => fitCta());
 // Safari/in-app browsers: when a toolbar overlays the bottom of the layout viewport, lift the bar above it and pad the page by the same amount
-function fitVV() { const vv = window.visualViewport; const gap = vv && Math.abs((vv.scale || 1) - 1) < 0.01 ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0; document.documentElement.style.setProperty('--vvGap', (gap < 200 ? gap : 0) + 'px'); }
-window.visualViewport?.addEventListener('resize', fitVV); window.visualViewport?.addEventListener('scroll', fitVV); fitVV();
+function fitVV() {
+  const vv = window.visualViewport;
+  const box = viewportBox({ innerHeight: window.innerHeight, offsetTop: vv ? vv.offsetTop : 0, height: vv ? vv.height : window.innerHeight, scale: vv ? vv.scale : 1 });
+  if (!box.active) return;
+  const s = document.documentElement.style;
+  s.setProperty('--vvTop', box.top + 'px'); s.setProperty('--vvH', box.height + 'px'); s.setProperty('--vvGap', box.bottom + 'px');
+}
+window.visualViewport?.addEventListener('resize', () => { fitVV(); fitCta(); }); window.visualViewport?.addEventListener('scroll', fitVV); fitVV();
+function pageY() { const el = $('#app'); return el ? el.scrollTop : window.scrollY; }
+function pageTo(y = 0) { const el = $('#app'); if (el) el.scrollTo(0, y); else window.scrollTo(0, y); }
+function readFileText(file) {
+  if (file && typeof file.text === 'function') return file.text();
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result || '')); r.onerror = () => rej(r.error || new Error('Could not read that file.')); r.readAsText(file); });
+}
 const modalKey = () => `${S.modal?.type}:${S.modal?.pid ?? ''}:${S.modal?.kind ?? ''}`;
 function renderModal() {
   let m = $('#modal'); if (!S.modal) { m?.remove(); return; }
@@ -163,13 +177,28 @@ function pillSeg(stateKey, items) { return `<div class="pill-seg">${items.map(([
 
 // ---------- title / slots / setup ----------
 function titleView() {
+  if (S.pendingImport) return importSlotView();
   return `<div class="title"><div class="logo">HARDWOOD<br><span>GM</span></div>
   <div style="opacity:.85;margin:10px 0 34px;letter-spacing:.5px">Basketball front office · 1996-97 and beyond</div>
   <button class="go" data-a="toSlots" data-mode="new">New Game</button>
   <button class="blue" style="background:#ffffff22" data-a="toSlots" data-mode="load">Continue / Load</button>
-  <button class="ghost" style="color:#fff;border-color:#ffffff55" data-a="importPick">Import Save (.json)</button>
-  <input type="file" id="importFile" accept=".json,application/json" style="display:none">
+  <label class="filebtn ghost">Import Save (.json)<input id="importFile" type="file" accept=".json,application/json"></label>
   <div style="color:#cfe3ea;margin-top:28px;font-size:11px;line-height:1.5">Unofficial fan project — not affiliated with the NBA, NBPA or any app maker. Player bios/box-score facts: Kaggle "NBA Players" dataset (J. Cirtautas, NBA Stats API). Ratings are this game's own estimates. Team names are text only; no logos.</div></div>`;
+}
+function importSlotView() {
+  const L = S.pendingImport.league, t = L.teams[L.userTid];
+  const n = L.players.filter(p => p.tid === L.userTid).length;
+  const rows = [1, 2, 3].map(i => {
+    const m = S.slots[i - 1];
+    const verb = m ? 'Replace' : 'Use';
+    const occupied = m ? `${esc(m.team)} · ${seasonLbl(m.season)}` : 'Empty';
+    return `<button class="blue" data-a="importCommit" data-slot="${i}">${verb} slot ${i} · ${occupied}</button>`;
+  }).join('');
+  return `<div class="title"><div class="logo" style="font-size:28px">Import save</div>
+  <div style="margin:12px 0 8px;line-height:1.4">${esc(t.city)} ${esc(t.name)} · ${seasonLbl(L.season)} · ${esc(E.PHASE_LABEL[L.phase] || L.phase)} · ${n} players on the roster</div>
+  <div style="opacity:.85;margin:0 0 16px;font-size:13px;line-height:1.4">Choose a slot on this device. The file you picked is not changed. Other slots stay as they are.</div>
+  ${rows}
+  <button class="ghost" style="color:#fff;border-color:#ffffff55" data-a="importCancel">Cancel</button></div>`;
 }
 function slotsView() {
   const mode = S.slotMode;
@@ -192,7 +221,7 @@ function setupView() {
     return `<div class="kv"><span>Season</span><b>${seasonLbl(y)} · ${nt} teams</b></div>${opt('startYear', y, yrs, 'Start year')}
     ${y < 1997 ? `<div class="muted small" id="eraNote">Real ${seasonLbl(y)} rosters from Wikipedia player articles. ${y < 1980 ? 'No 3-point line until 1979-80. ' : ''}${y < 1955 ? 'No shot clock until 1954-55. ' : ''}${y < 1985 ? 'No salary cap until 1984-85. ' : ''}Rosters of ${E.rosterMaxAt(y)}. Every real expansion, relocation, fold and the 1976 ABA merger happen in their real years. ${y < 1965 ? 'Early data is thin: many ratings are estimated from honors, minutes and team records, and short rosters get generated fill-ins.' : 'Some ratings are estimated where a player has no stats table.'}</div>` : ''}`; })()}
   ${(+n.startYear || 1997) < 1997 ? '' : opt('start', n.start, [['PRESEASON', 'Preseason — rosters as they opened 1996-97'], ['FA', 'Free agency — summer of 1996 (Shaq, Mourning, Payton, Howard on the market)'], ['DRAFT', 'Draft — 1996 draft night (Iverson, Kobe, Nash, Ray Allen…)']], 'Start point')}
-  ${(+n.startYear || 1997) < 1997 ? '' : opt('rosters', n.rosters || 'real', [['real', 'Real 1996-97 rosters'], ['random', 'Random: real players dealt to teams by a snake draft'], ['file', 'Roster file (imported .json)']], 'Rosters')}${n.rosters === 'file' ? `<div class="card" style="margin:6px 14px"><div class="row sp"><span>${n.rosterFile ? `<b>${esc(n.rosterName || 'roster file')}</b> · ${n.rosterFile.players.length} players` : 'No file chosen. Export one from Settings in any league, edit it, then load it here.'}</span><button class="sm" data-a="rosterPick">${n.rosterFile ? 'Change' : 'Choose file'}</button></div>${n.rosterFile ? '<button class="sm ghost" data-a="rosterClear" style="margin-top:6px">Use real rosters</button>' : ''}</div><input type="file" id="rosterFile" accept=".json,application/json" style="display:none">` : ''}${n.rosters === 'random' && n.start !== 'PRESEASON' ? '<div class="muted small" style="padding:0 14px">Random rosters apply to the 1996-97 training camp start.</div>' : ''}
+  ${(+n.startYear || 1997) < 1997 ? '' : opt('rosters', n.rosters || 'real', [['real', 'Real 1996-97 rosters'], ['random', 'Random: real players dealt to teams by a snake draft'], ['file', 'Roster file (imported .json)']], 'Rosters')}${n.rosters === 'file' ? `<div class="card" style="margin:6px 14px"><div class="row sp"><span>${n.rosterFile ? `<b>${esc(n.rosterName || 'roster file')}</b> · ${n.rosterFile.players.length} players` : 'No file chosen. Export one from Settings in any league, edit it, then load it here.'}</span><label class="filebtn sm">${n.rosterFile ? 'Change' : 'Choose file'}<input id="rosterFile" type="file" accept=".json,application/json"></label></div>${n.rosterFile ? '<button class="sm ghost" data-a="rosterClear" style="margin-top:6px">Use real rosters</button>' : ''}</div>` : ''}${n.rosters === 'random' && n.start !== 'PRESEASON' ? '<div class="muted small" style="padding:0 14px">Random rosters apply to the 1996-97 training camp start.</div>' : ''}
   ${opt('draftClasses', n.draftClasses, [['real', (+n.startYear || 1997) < 1997 ? 'Real drafts (NBA players) + 2027 mock' : 'Real NBA drafts (1997–2026) + 2027 mock, then generated'], ['generated', 'Generated prospects only']], 'Draft classes')}
   ${opt('histTendency', n.histTendency, [[0, 'Off — careers fully random'], [0.35, 'Light — mostly random'], [0.5, 'Medium — real stars usually emerge (default)'], [0.7, 'Strong — close to real careers']], 'Real-career tendency for drafted rookies')}</div>
   <div class="card"><h3>Difficulty</h3><div class="pill-seg" style="margin:0 0 8px">${['Easy', 'Medium', 'Hard', 'Custom'].map(d => `<button class="${(n.custom ? 'Custom' : n.difficulty) === d ? 'on' : ''}" data-a="ngDiff" data-d="${d}">${d}</button>`).join('')}</div>
@@ -981,7 +1010,7 @@ PAGES.dclass = () => {
    <button class="sm" style="margin-top:8px" data-a="goto" data-n="dcglobal">Edit any year's class for all franchises</button>
    <div class="grid2" style="margin-top:8px"><input id="dcName" maxlength="40" placeholder="New prospect name" aria-label="Prospect name"><button class="sm go" data-a="dcAdd">Add & edit</button></div></div>
   <div class="sect">Presets on this device</div><div class="card"><div class="grid2"><input id="dcPreset" maxlength="60" placeholder="Preset name" aria-label="Preset name"><button class="sm" data-a="dcSavePreset">Save class as preset</button></div>
-   <div class="row" style="gap:8px;margin-top:8px"><button class="sm" data-a="dcImport">Import JSON</button><input type="file" id="dcFile" accept=".json,application/json" style="display:none"></div>
+   <div class="row" style="gap:8px;margin-top:8px"><label class="filebtn sm">Import JSON<input id="dcFile" type="file" accept=".json,application/json"></label></div>
    ${pre.length ? `<div class="list" style="margin-top:8px">${pre.map((c, i) => `<div class="it"><div class="grow"><div class="nm">${esc(c.name)}</div><div class="meta">${c.prospects.length} prospects</div>
      <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap"><button class="sm go" data-a="dcLoad" data-i="${i}" data-m="replace">Replace ${y}</button><button class="sm" data-a="dcLoad" data-i="${i}" data-m="merge">Merge into ${y}</button><button class="sm" data-a="dcExport" data-i="${i}">Export</button><button class="sm ghost" data-a="dcDelPreset" data-i="${i}" aria-label="Delete preset">${icon('trash', { s: 18 })}</button></div></div></div>`).join('')}</div>` : '<div class="muted small" style="margin-top:8px">No presets yet.</div>'}</div>
   <div class="sect">${y} prospects</div><div class="list">${ps.slice(0, 80).map(p => `<div class="it">${avatar(p, 36)}<div class="grow" style="min-height:44px;display:flex;flex-direction:column;justify-content:center" data-a="player" data-pid="${p.pid}"><div class="nm">${esc(p.name)}${p.custom ? ' <span class="tag">custom</span>' : ''}</div><div class="meta">${p.pos} · Age ${p.age} · Pot ${R(p.pot)}</div></div>${sq(p.ovr)}<button class="sm ghost" data-a="dcEdit" data-pid="${p.pid}" aria-label="Edit ${esc(p.name)}">${icon('pen', { s: 18 })}</button><button class="sm ghost" data-a="dcDel" data-pid="${p.pid}" aria-label="Remove ${esc(p.name)}">${icon('trash', { s: 18 })}</button></div>`).join('') || '<div class="it"><div class="muted">No prospects yet.</div></div>'}</div>` };
@@ -1134,8 +1163,8 @@ function cutModal() {
 }
 
 // ---------- ACTIONS ----------
-function go(n, extra = {}, push = true) { if (push && S.view === 'main') S.stack.push(S.page); S.page = { n, ...extra }; S.drawer = false; render(); window.scrollTo(0, 0); }
-function root(n, extra = {}) { S.stack = []; S.page = { n, ...extra }; S.drawer = false; render(); window.scrollTo(0, 0); }
+function go(n, extra = {}, push = true) { if (push && S.view === 'main') S.stack.push(S.page); S.page = { n, ...extra }; S.drawer = false; render(); pageTo(0); }
+function root(n, extra = {}) { S.stack = []; S.page = { n, ...extra }; S.drawer = false; render(); pageTo(0); }
 async function simChunked(nGames, label = 'Simulating') {
   const L = S.L; let c = 0; const startW = E.standings(L)[L.userTid].w;
   overlay(label + '…'); await sleep(20); let lastY = performance.now();
@@ -1176,7 +1205,7 @@ const A = {
     await loadData(); S.ngSeed = Math.floor(Math.random() * 2 ** 31);
     try { S.preL = E.newLeague(DATA, { dcGlobal: dcGlobal(), ...S.ng, rosterFile: S.ng.rosters === 'file' ? S.ng.rosterFile : null, seed: S.ngSeed }); } catch (e) { overlay(null); return toast('Could not build the league: ' + e.message, 4000); } overlay(null); S.view = 'pickteam'; render();
   },
-  previewTeam(d) { S.previewTid = +d.tid; S.view = 'preview'; render(); window.scrollTo(0, 0); },
+  previewTeam(d) { S.previewTid = +d.tid; S.view = 'preview'; render(); pageTo(0); },
   async takeOver() {
     overlay('Taking over…'); await sleep(20);
     const L = E.newLeague(DATA, { dcGlobal: dcGlobal(), ...S.ng, rosterFile: S.ng.rosters === 'file' ? S.ng.rosterFile : null, gmName: S.ng.gmName || 'GM', seed: S.ngSeed, userTid: S.previewTid });
@@ -1184,12 +1213,29 @@ const A = {
   },
   async loadSlot(d) { overlay('Loading'); const L = await loadSlot(+d.slot); overlay(null); if (!L) return toast('Empty slot'); await loadData().catch(() => {}); attach(L); S.slot = +d.slot; S.view = 'main'; root('home'); },
   async delSlot(d) { if (!confirm(`Delete save in slot ${d.slot}?`)) return; await deleteSlot(+d.slot); S.slots = await listSlots(); render(); },
-  importPick() { $('#importFile').click(); },
+  importPick() { $('#importFile')?.click(); },
+  importCancel() { S.pendingImport = null; render(); toast('Import cancelled. Nothing was saved.'); },
+  async importCommit(d) {
+    const slot = +d.slot, pending = S.pendingImport;
+    if (!pending || ![1, 2, 3].includes(slot)) return;
+    const prev = { L: S.L, slot: S.slot, view: S.view };
+    try {
+      await loadData().catch(() => {});
+      const L = pending.league;
+      attach(L); S.slot = slot; await saveSlot(slot, L); S.slots = await listSlots();
+      S.pendingImport = null; S.view = 'main';
+      root('home');
+      toast('Imported into slot ' + slot);
+    } catch (err) {
+      S.L = prev.L; S.slot = prev.slot; S.view = prev.view;
+      toast('Import failed: ' + (err?.message || 'could not store the save'), 5000); render();
+    }
+  },
   drawer() { S.drawer = true; renderDrawer(); }, drawerClose() { S.drawer = false; renderDrawer(); },
   nav(d) { if (d.t) S.tab[d.p] = d.t; if (d.p === 'team') S.tab.team = d.t || 'roster'; S.drawer = false; S.modal = null; renderModal(); if (['reorder', 'player', 'box'].includes(d.p)) go(d.p); else root(d.p); },
-  back() { if (S.page.n === 'live') { clearInterval(liveTimer); S.live = null; } S.page = S.stack.pop() || { n: 'home' }; render();
+  back() { if (S.page.n === 'live') { clearInterval(liveTimer); S.live = null; } S.page = S.stack.pop() || { n: 'home' }; render(); pageTo(0);
     const mr = S.modalReturn; if (mr && S.stack.length < mr.depth) { S.modalReturn = null; S.modal = mr.modal; renderModal(); } },
-  tab(d) { S.tab[d.g] = d.k; render(); },
+  tab(d) { S.tab[d.g] = d.k; render(); pageTo(0); },
   setS(d) { S[d.k] = isNaN(+d.v) || d.v === '' ? d.v : +d.v; render(); },
   teamPage(d) { const tid = +d.tid; if (tid === S.L.userTid) { S.tab.team = 'roster'; return root('team'); } S.tab.team = 'roster'; go('team', { tid }); },
   player(d) { if (S.modal) { S.modalReturn = { modal: S.modal, depth: S.stack.length + 1 }; S.modal = null; renderModal(); } S.tab.player = 'skills'; go('player', { pid: +d.pid }); },
@@ -1200,7 +1246,7 @@ const A = {
   edSave() {
     const m = S.ed.m; const model = { ...m, injury: m.injury?.type ? { type: m.injury.type, games: +(m.injury.games ?? 5) } : null, contract: +m.tid >= 0 ? m.contract : null };
     const r = E.applyEdit(S.L, S.ed.pid, model);
-    if (!r.ok) { S.ed.errors = r.errors; render(); window.scrollTo(0, 0); return toast(r.errors[0], 3000); }
+    if (!r.ok) { S.ed.errors = r.errors; render(); pageTo(0); return toast(r.errors[0], 3000); }
     S.ed = null; autosave(); A.back(); toast(r.changed.length ? `Saved: ${r.changed.slice(0, 4).join(', ')}${r.changed.length > 4 ? '…' : ''}` : 'No changes');
   },
   dcAdd() { const r = E.addProspect(S.L, { year: S.dcYear, name: (document.getElementById('dcName').value || '').trim() || undefined }); if (!r.ok) return toast(r.error); S.ed = null; autosave(); go('editPlayer', { pid: r.pid }); },
@@ -1296,7 +1342,7 @@ const A = {
   draftNext() { const L = S.L, D = L.draft; const slot = D.order[D.idx]; if (!slot || E.draftControls(L, slot.tid)) return render(); E.draftUntilUser(L, { one: true }); autosave(); render(); },
   draftToMe() { const L = S.L, D = L.draft; const sl = D.order[D.idx]; if (sl && E.draftControls(L, sl.tid)) E.draftAutoOne(L);
     if (L.settings.draftAll || (L.draftTeams || []).length) { while (D.idx < D.order.length && D.order[D.idx].tid !== L.userTid) if (!E.draftAutoOne(L)) break; } else E.draftUntilUser(L); autosave(); render(); },
-  brSel(d) { S.brSel = S.brSel === d.id ? null : d.id; const y = window.scrollY; render(); window.scrollTo(0, y); },
+  brSel(d) { S.brSel = S.brSel === d.id ? null : d.id; const y = pageY(); render(); pageTo(y); },
   simOneDay() { const L = S.L; if (L.phase === 'REGULAR' && E.seasonDone(L)) return toast('Regular season is over'); E.simDay(L); autosave(); render(); },
   draftMode(d) { const L = S.L; L.draft.modeChosen = true; L.settings.draftAll = d.v === 'all'; if (d.v === 'mine') E.draftUntilUser(L); autosave(); render(); },
   draftAllTog() { const L = S.L; L.settings.draftAll = !L.settings.draftAll; autosave(); render(); toast(L.settings.draftAll ? 'You now make every pick' : 'CPU teams pick for themselves'); },
@@ -1325,7 +1371,7 @@ const A = {
   returnFAs() { const L = S.L; if (!confirm('Re-sign every free agent who played for a team last season back to that team at a fair contract?')) return;
     const mine = E.freeAgents(L).filter(p => p.formerTid === L.userTid).length; const inc = mine > 0 && confirm(`Also bring back ${mine} of your own former players to your team?`);
     const r = E.returnFreeAgents(L, { includeUser: inc }); E.aiRosterFix(L); toast(`${r.length} free agents returned to their teams`); autosave(); render(); },
-  edPos2(d) { if (!S.ed) return; const m = S.ed.m; const a = new Set(m.pos2 || []); a.has(d.v) ? a.delete(d.v) : a.size < 2 ? a.add(d.v) : toast('Up to 2 secondary positions'); m.pos2 = [...a]; const y = window.scrollY; render(); window.scrollTo(0, y); },
+  edPos2(d) { if (!S.ed) return; const m = S.ed.m; const a = new Set(m.pos2 || []); a.has(d.v) ? a.delete(d.v) : a.size < 2 ? a.add(d.v) : toast('Up to 2 secondary positions'); m.pos2 = [...a]; const y = pageY(); render(); pageTo(y); },
   edAll(d) { if (!S.ed) return; const step = +d.d; let tot = 0;
     for (const k of E.EDIT_ATTRS) { const path = 'attrs.' + k; const v = Math.max(40, Math.min(99, (+edGet(path) || 0) + step)); edSet(path, v); tot += v;
       const inp = document.querySelector(`[data-ed="${path}"]`); if (inp) inp.value = v; const b = document.getElementById('v-' + path.replace('.', '-')); if (b) { b.textContent = v; b.className = qc(E.internalFor(v)); } }
@@ -1352,7 +1398,7 @@ const A = {
   tradeFor(d) { const p = E.getP(S.L, +d.pid); S.trade = { tid: p.tid, a: [], ap: [], b: [p.pid], bp: [] }; S.tab.trade = 'machine'; root('trade'); },
   tAddSuggest(d) { const tr = S.trade; if (d.kind === 'p') tr.a.push(+d.id); else tr.ap.push(d.id); render(); },
   tclear() { S.trade = { tid: S.trade.tid, a: [], ap: [], b: [], bp: [] }; render(); },
-  ctTog(d) { const ct = S.ct; const from = +d.from; if (ct.mv[d.key] != null) delete ct.mv[d.key]; else { const i = ct.teams.indexOf(from); ct.mv[d.key] = ct.teams[(i + 1) % ct.teams.length]; } const y = window.scrollY; render(); window.scrollTo(0, y); },
+  ctTog(d) { const ct = S.ct; const from = +d.from; if (ct.mv[d.key] != null) delete ct.mv[d.key]; else { const i = ct.teams.indexOf(from); ct.mv[d.key] = ct.teams[(i + 1) % ct.teams.length]; } const y = pageY(); render(); pageTo(y); },
   ctAdd() { const ct = S.ct; const t = teamsAZ(S.L).find(x => !ct.teams.includes(x.tid)); if (t && ct.teams.length < 4) ct.teams.push(t.tid); render(); },
   ctDel(d) { const ct = S.ct; const tid = ct.teams[+d.i]; ct.teams.splice(+d.i, 1); for (const k of Object.keys(ct.mv)) { const from = k[0] === 'p' ? E.getP(S.L, +k.slice(2))?.tid : S.L.picks.find(x => x.id === k.slice(2))?.tid; if (from === tid || ct.mv[k] === tid) delete ct.mv[k]; } render(); },
   ctForce() { const L = S.L, ct = S.ct; const moves = Object.entries(ct.mv).map(([k, to]) => k[0] === 'p' ? { pid: +k.slice(2), to } : { pick: k.slice(2), to });
@@ -1417,18 +1463,29 @@ document.addEventListener('change', (e) => {
   if (el.dataset.a === 'dcgYear') { S.dcgYear = +el.value; render(); return; }
   if (el.dataset.a === 'dcgMode') { const G = dcGlobal(); const y = S.dcgYear; const g = G[y] ||= { name: `Custom ${y} class`, mode: 'merge', prospects: [], remove: [] }; g.mode = el.value; dcGSave(G); render(); return; }
   if (el.dataset.a === 'dcYear') { S.dcYear = +el.value; render(); return; }
-  if (el.id === 'dcFile' && el.files[0]) { el.files[0].text().then((txt) => { const f = JSON.parse(txt); const v = E.validateClass(f); if (!v.ok) throw new Error(v.error); const a = dcPresets(); a.push(f); dcSave(a); toast(`Imported "${f.name}" (${f.prospects.length})`); render(); }).catch(err => toast('Draft class: ' + err.message, 4000)); return; }
-  if (el.id === 'rosterFile' && el.files[0]) {
-    const name = el.files[0].name; el.files[0].text().then((txt) => { const f = JSON.parse(txt); const v = E.validateRosterFile(f); if (!v.ok) throw new Error(v.error);
-      S.ng.rosterFile = f; S.ng.rosterName = name; S.ng.start = 'PRESEASON'; toast(`Loaded ${f.players.length} players.`); render(); }).catch(err => toast('Roster file: ' + err.message, 4000));
+  if (el.id === 'dcFile' || el.id === 'rosterFile' || el.id === 'importFile') {
+    const file = el.files && el.files[0];
+    const pending = file ? readFileText(file) : null;
+    el.value = '';
+    if (!file) return;
+    if (el.id === 'dcFile') {
+      pending.then((txt) => { const f = JSON.parse(txt); const v = E.validateClass(f); if (!v.ok) throw new Error(v.error); const a = dcPresets(); a.push(f); dcSave(a); toast(`Imported "${f.name}" (${f.prospects.length})`); render(); }).catch(err => toast('Draft class: ' + (err.message || 'could not read that file'), 4000));
+      return;
+    }
+    if (el.id === 'rosterFile') {
+      const name = file.name;
+      pending.then((txt) => { const f = JSON.parse(txt); const v = E.validateRosterFile(f); if (!v.ok) throw new Error(v.error);
+        S.ng.rosterFile = f; S.ng.rosterName = name; S.ng.start = 'PRESEASON'; toast(`Loaded ${f.players.length} players.`); render(); }).catch(err => toast('Roster file: ' + (err.message || 'could not read that file'), 4000));
+      return;
+    }
+    toast('Reading file…');
+    pending.then((txt) => {
+      const r = parseImportedSave(txt);
+      if (!r.ok) { toast(r.error, 5000); return; }
+      S.pendingImport = { league: r.league, name: file.name };
+      S.view = 'title'; render();
+    }).catch(err => toast('Could not read that file. ' + (err.message || 'Nothing was imported.'), 5000));
     return;
-  }
-  if (el.id === 'importFile' && el.files[0]) {
-    el.files[0].text().then(async (txt) => {
-      const L = JSON.parse(txt); if (!L.teams || !L.players) throw new Error('Not a Hardwood GM save');
-      const slot = +(prompt('Import into which slot (1-3)?', '1') || 0); if (![1, 2, 3].includes(slot)) return;
-      await loadData().catch(() => {}); attach(L); S.slot = slot; await saveSlot(slot, L); S.view = 'main'; root('home'); toast('Imported!');
-    }).catch(err => toast('Import failed: ' + err.message, 4000));
   }
 });
 document.addEventListener('input', (e) => {
@@ -1459,6 +1516,6 @@ function edInput(el, commit) {
     const o = document.getElementById('edOvr'); const p = E.getP(S.L, S.ed.pid); if (o && p) { const ov = E.previewOvr(p, S.ed.m); o.textContent = ov; o.className = 'n ' + qc(E.internalFor(ov)); }
     return;
   }
-  if (commit && ['tid', 'injury.type', 'pos', 'devTrait'].includes(path)) { const y = window.scrollY; render(); window.scrollTo(0, y); }
+  if (commit && ['tid', 'injury.type', 'pos', 'devTrait'].includes(path)) { const y = pageY(); render(); pageTo(y); }
 }
 boot();
