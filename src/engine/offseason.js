@@ -59,7 +59,9 @@ export function startPreseason(L, first = false) {
     for (const p of late) {
       const opts = L.teams.filter(t => t.tid !== L.userTid && !t.inactive && teamPlayers(L, t.tid).length < ROSTER_MAX).map(t => {
         const space = cap(L) - payroll(L, t.tid);
-        const amt = Math.max(minSalary(L.season), Math.min(Math.round(cap(L) * 0.09), Math.round(marketValue(p, L.season) * 0.6), space > 0 ? space : 0));
+        let amt = Math.min(Math.round(cap(L) * 0.09), Math.round(marketValue(p, L.season) * 0.6));
+        if (salaryCapMode(L) !== 'off') amt = Math.min(amt, space > 0 ? space : 0);
+        amt = Math.max(minSalary(L.season), amt);
         return { t, amt: Math.round(amt / 10) * 10, need: p.ovr - (teamPlayers(L, t.tid).sort((a, b) => b.ovr - a.ovr)[7]?.ovr || 0) };
       }).filter(o => o.need > 0 && canAfford(L, o.t.tid, o.amt).ok).sort((a, b) => b.need - a.need);
       const o = opts[0]; if (!o) continue;
@@ -245,9 +247,13 @@ export function release(L, p, auto = false) {
   if (p.tid === L.userTid && !auto) news(L, `${L.teams[p.tid].abbr} waive ${p.name}.`, 'transaction', p.tid);
   p.formerTid = p.tid; p.tid = -1; p.contract = null;
 }
+// Salary cap Off (and the old playerCap:false save, before capMode existed) means no payroll limit.
+function salaryCapMode(L) {
+  return L.settings?.capMode || (L.settings?.playerCap === false ? 'off' : 'soft');
+}
 // cap rules: under cap -> fits in space; min contract always ok; MLE from 2000 era; Bird rights in re-sign
 export function canAfford(L, tid, amt, { bird = false } = {}) {
-  const mode = L.settings.capMode || (L.settings.playerCap === false ? 'off' : 'soft');
+  const mode = salaryCapMode(L);
   if (mode === 'off') return { ok: true, via: 'No salary cap' };
   if (mode === 'hard') { const space = cap(L) - payroll(L, tid); return amt <= space ? { ok: true, via: 'Cap space (hard cap)' } : { ok: false, error: `Hard cap: only ${(Math.max(0, space) / 1000).toFixed(2)}M of room.` }; }
   // CPU teams stay under the luxury tax line except to keep their own players or sign minimums
@@ -744,6 +750,8 @@ function cpuResign(L, p) {
   const gap = worst ? mine - rosterScore(L, worst, { strat, money: false }) : 0;
   const star = mine >= 78 || (mine >= 70 && gap >= 14);
   if (!star && rand() >= 0.75) { walk(); return; }
+  // Cap Off: payroll never decides. Willingness, the value bar, and the coin flip for a non-star still do.
+  if (salaryCapMode(L) === 'off') { signAt(val * (0.95 + rand() * 0.15)); return; }
   const capLine = capFor(L.season) * 1.6;
   const roomFor = () => capLine - (payroll(L, tid) - (p.contract?.amt || 0));
   if (star) {
