@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { aiRosterFix, birdRightsReturns, cpuUpgrade, endHiatus, enterResign, rosterScore } from '../src/engine/offseason.js';
+import { aiFAOffers, aiRosterFix, birdRightsReturns, cpuUpgrade, endHiatus, enterResign, resolveFA, rosterScore } from '../src/engine/offseason.js';
 import { setSeed } from '../src/engine/rng.js';
 
 let n = 1;
@@ -213,4 +213,81 @@ test('a solid expiring player still walks when the deal does not fit, and nobody
   assert.equal(solid.tid, -1);
   assert.equal(solid.formerTid, 1);
   assert.ok(mates.every(p => p.tid === 1));
+});
+
+function overCapResign(capMode, seed, { legacy = false } = {}) {
+  const star = guy({ tid: 1, name: 'Star', age: 24, ovr: 82, pot: 88, pos: 'PF', amt: 4000, exp: 2001, ng: false });
+  const solid = guy({ tid: 1, name: 'Solid', age: 29, ovr: 64, pot: 64, pos: 'SG', amt: 3000, exp: 2001, ng: false });
+  const camp = Array.from({ length: 6 }, (_, i) => guy({ tid: 1, name: `Camp${seed}-${i}`, age: 30, ovr: 55, pot: 55, pos: 'C', amt: 14000, exp: 2005, ng: false }));
+  const mine = guy({ tid: 0, name: 'Mine', age: 24, ovr: 82, pot: 88, pos: 'PF', amt: 4000, exp: 2001, ng: false });
+  const L = league([star, solid, ...camp, mine]);
+  if (legacy) { delete L.settings.capMode; L.settings.playerCap = false; }
+  else L.settings.capMode = capMode;
+  setSeed(seed);
+  enterResign(L);
+  return { star, solid, camp, mine, L };
+}
+
+test('with the salary cap off, payroll does not push a valuable player out or cause a waiver', () => {
+  let moneyWasTheReason = 0;
+  for (let seed = 1; seed <= 24; seed++) {
+    const on = overCapResign('soft', seed);
+    const off = overCapResign('off', seed);
+    assert.equal(off.star.tid, 1, `star seed ${seed}`);
+    assert.ok(off.star.contract && off.star.contract.exp >= off.L.season);
+    assert.ok(off.camp.every(p => p.tid === 1), `no payroll waiver seed ${seed}`);
+    assert.equal(off.mine.tid, 0);
+    assert.ok(off.L.expiring.includes(off.mine.pid));
+    assert.equal(on.star.tid, 1);
+    if (on.solid.tid === -1 && off.solid.tid === 1) moneyWasTheReason++;
+  }
+  assert.ok(moneyWasTheReason >= 8, `expected the cap line, not the coin flip, to explain most walks (${moneyWasTheReason})`);
+
+  const old = overCapResign('soft', 4, { legacy: true });
+  assert.equal(old.star.tid, 1);
+  assert.equal(old.solid.tid, 1);
+  assert.ok(old.camp.every(p => p.tid === 1));
+});
+
+test('cap off still lets an unwilling or low-value player leave, and a full roster still blocks a signing', () => {
+  const pout = guy({ tid: 1, name: 'Pout', age: 24, ovr: 82, pot: 88, pos: 'PF', amt: 4000, exp: 2001, ng: false });
+  pout.traits = { work: 'Medium', ambition: 0, loyalty: 0, personality: 'Team Player', greed: 40 };
+  const walls = Array.from({ length: 12 }, (_, i) => guy({ tid: 1, name: `Wall${i}`, age: 28, ovr: 84, pot: 84, pos: 'PF', amt: 8000, exp: 2006, ng: false }));
+  const low = guy({ tid: 1, name: 'Low', age: 32, ovr: 48, pot: 48, pos: 'SG', amt: 3000, exp: 2001, ng: false });
+  const L = league([pout, low, ...walls]);
+  L.settings.capMode = 'off';
+  setSeed(2);
+  enterResign(L);
+  assert.equal(pout.tid, -1);
+  assert.equal(pout.formerTid, 1);
+  assert.equal(low.tid, -1);
+  assert.ok(walls.every(p => p.tid === 1));
+
+  const fa = guy({ tid: -1, name: 'StarFA', age: 24, ovr: 82, pot: 88, pos: 'PF', contract: null });
+  const blocked = league([fa, ...fillers(1, 15, 60, 'C')]);
+  blocked.settings.capMode = 'off';
+  blocked.phase = 'FA1';
+  blocked.fa = { offers: {}, round: 1 };
+  setSeed(3);
+  aiFAOffers(blocked, 1);
+  resolveFA(blocked, 1);
+  assert.equal(fa.tid, -1);
+
+  let signedOff = 0, signedOn = 0;
+  for (let seed = 1; seed <= 30; seed++) {
+    for (const mode of ['off', 'soft']) {
+      const star = guy({ tid: -1, name: 'OpenFA', age: 24, ovr: 82, pot: 88, pos: 'PF', contract: null });
+      const club = league([star, ...fillers(1, 8, 55, 'C').map(p => ({ ...p, contract: { ...p.contract, amt: 20000 } }))]);
+      club.settings.capMode = mode;
+      club.phase = 'FA1';
+      club.fa = { offers: {}, round: 1 };
+      setSeed(seed);
+      aiFAOffers(club, 1);
+      resolveFA(club, 1);
+      if (star.tid === 1) { if (mode === 'off') signedOff++; else signedOn++; }
+      assert.notEqual(star.tid, 0);
+    }
+  }
+  assert.equal(signedOn, 0);
+  assert.ok(signedOff >= 8, `cap off should let the over-cap team sign him (${signedOff})`);
 });
