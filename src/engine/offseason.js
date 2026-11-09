@@ -86,15 +86,58 @@ export function startPreseason(L, first = false) {
   setExpectation(L);
   reindex(L);
 }
+// How a CPU front office values a fringe player. Current ability leads. Upside counts only in part,
+// and less for an older player or a team that is trying to win now, because potential is not a guarantee.
+// A much better veteran still outranks a raw prospect. Money and a saved starter are stickiness, not a lock.
+export function rosterScore(L, p, { strat = 'mid', tid = p?.tid, money = true } = {}) {
+  const ovr = +p?.ovr || 0;
+  const pot = Math.max(ovr, +p?.pot || ovr);
+  const up = pot - ovr;
+  const age = p?.age || 27;
+  const trust = (age <= 23 ? 0.34 : age <= 26 ? 0.26 : age <= 29 ? 0.12 : 0.04) * (strat === 'win' ? 0.75 : strat === 'rebuild' ? 1.25 : 1);
+  const drag = strat === 'rebuild' ? Math.max(0, age - 27) * 0.35 : strat === 'win' ? Math.max(0, age - 33) * 0.25 : Math.max(0, age - 31) * 0.2;
+  let s = ovr + up * trust - drag;
+  if (L && tid >= 0 && p) {
+    const mates = teamPlayers(L, tid).filter(x => x.pid !== p.pid && !x.il);
+    if (mates.length && !mates.some(m => m.pos === p.pos)) s += 4;
+    const club = L.teams[tid];
+    if (club?.manualLineup && club.rotation?.starters?.includes(p.pid)) s += 6;
+    if (money && p.tid === tid) {
+      const hit = releaseConsequence(L, p);
+      if (hit.dead && hit.amt > minSalary(L.season) * 1.5) s += 3;
+    }
+  }
+  return s;
+}
+function rosterWorse(L, a, b, tid, strat) {
+  const d = rosterScore(L, a, { strat, tid }) - rosterScore(L, b, { strat, tid });
+  if (Math.abs(d) > 0.05) return d;
+  return ((a.pot || 0) - (a.ovr || 0)) - ((b.pot || 0) - (b.ovr || 0)) || (b.age || 0) - (a.age || 0);
+}
+function bestFreeAgent(L, tid, strat) {
+  return L.players.filter(p => p.tid === -1 && !p.retired && !p.injury).sort((a, b) => rosterScore(L, b, { strat, tid, money: false }) - rosterScore(L, a, { strat, tid, money: false }))[0];
+}
+function stratByTeam(L) {
+  const act = L.teams.filter(t => !t.inactive);
+  const st = L.phase === 'REGULAR' ? standings(L) : null;
+  const ranked = act.map(t => {
+    const r = st?.[t.tid]; const gp = r?.gp || 0;
+    return { tid: t.tid, o: teamOvr(L, t.tid) + (gp ? (r.pct - 0.5) * 40 * Math.min(1, gp / 30) : 0) };
+  }).sort((a, b) => b.o - a.o);
+  const third = Math.max(1, Math.round(act.length / 3));
+  const out = new Map();
+  ranked.forEach((x, i) => out.set(x.tid, i < third ? 'win' : i >= ranked.length - third ? 'rebuild' : 'mid'));
+  return out;
+}
 export function aiRosterFix(L) {
-  const fas = () => L.players.filter(p => p.tid === -1 && !p.retired).sort((a, b) => b.ovr - a.ovr);
   const man = managedSet(L); ensureFAPool(L);
+  const strat = stratByTeam(L);
   for (const t of L.teams) if (!t.inactive) {
     if (t.tid === L.userTid || man.has(t.tid)) continue;
     let ps = teamPlayers(L, t.tid);
-    while (ps.length > ROSTER_MAX) { const worst = ps.sort((a, b) => (a.ovr + (a.pot - a.ovr) * 0.3) - (b.ovr + (b.pot - b.ovr) * 0.3))[0]; release(L, worst, true); ps = teamPlayers(L, t.tid); }
+    while (ps.length > ROSTER_MAX) { const worst = ps.sort((a, b) => rosterWorse(L, a, b, t.tid, strat.get(t.tid)))[0]; release(L, worst, true); ps = teamPlayers(L, t.tid); }
     while (ps.length < ROSTER_MAX) { // v40: CPU teams always carry a full 15
-      let f = fas()[0];
+      let f = bestFreeAgent(L, t.tid, strat.get(t.tid));
       if (!f) { f = generateVeteran(L.season, randInt(42, 52)); f.tid = -1; resetSeasonStats(f, L.season); L.players.push(f); reindex(L); }
       sign(L, f, t.tid, minSalary(L.season), 1, { ng: true }); ps = teamPlayers(L, t.tid);
     }
@@ -106,17 +149,15 @@ export function aiRosterFix(L) {
 export function cpuUpgrade(L, perTeam = 1) {
   let n = 0; const stable = stableRosters(L); // v40: runs with morale off too (bench swaps only; no trades/poaching)
   const man = managedSet(L); const minS = minSalary(L.season);
-  const act = L.teams.filter(t => !t.inactive); const st = L.phase === 'REGULAR' ? standings(L) : null; // v40: real W/L (teams have no won/lost fields; standings are computed)
-  const ranked = act.map(t => { const r = st?.[t.tid]; const gp = r?.gp || 0; return { tid: t.tid, o: teamOvr(L, t.tid) + (gp ? (r.pct - 0.5) * 40 * Math.min(1, gp / 30) : 0) }; }).sort((a, b) => b.o - a.o).map(x => x.tid);
-  const third = Math.round(act.length / 3);
+  const stratOf = stratByTeam(L);
   // stable rosters in the offseason: don't grab another team's unsigned free agents (no poaching)
   const ok = (f) => !(stable && L.phase !== 'REGULAR' && f.formerTid >= 0 && !f.waived);
   for (const t of L.teams) { if (t.inactive || t.tid === L.userTid || man.has(t.tid)) continue;
-    const rk = ranked.indexOf(t.tid); const strat = rk < third ? 'win' : rk >= act.length - third ? 'rebuild' : 'mid';
+    const strat = stratOf.get(t.tid) || 'mid';
     let all = teamPlayers(L, t.tid).filter(p => !p.il);
-    while (all.length > ROSTER_MAX) { release(L, all.sort((a, b) => (a.ovr + (a.pot - a.ovr) * 0.3) - (b.ovr + (b.pot - b.ovr) * 0.3))[0], true); all = teamPlayers(L, t.tid).filter(p => !p.il); }
+    while (all.length > ROSTER_MAX) { release(L, all.sort((a, b) => rosterWorse(L, a, b, t.tid, strat))[0], true); all = teamPlayers(L, t.tid).filter(p => !p.il); }
     ensureFAPool(L);
-    while (all.length < ROSTER_MAX) { const f = L.players.filter(x => x.tid === -1 && !x.retired && !x.injury && ok(x)).sort((a, b) => b.ovr - a.ovr)[0]; if (!f) break; sign(L, f, t.tid, minS, 1, { ng: true }); all = teamPlayers(L, t.tid).filter(p => !p.il); }
+    while (all.length < ROSTER_MAX) { const f = L.players.filter(x => x.tid === -1 && !x.retired && !x.injury && ok(x)).sort((a, b) => rosterScore(L, b, { strat, tid: t.tid, money: false }) - rosterScore(L, a, { strat, tid: t.tid, money: false }))[0]; if (!f) break; sign(L, f, t.tid, minS, 1, { ng: true }); all = teamPlayers(L, t.tid).filter(p => !p.il); }
     for (let k = 0; k < perTeam; k++) {
       const ps = teamPlayers(L, t.tid); if (ps.length < ROSTER_MIN) break;
       const w = strat === 'win' ? 0.85 : strat === 'rebuild' ? 0.35 : 0.6;
@@ -397,7 +438,8 @@ export function endHiatus(L, p) {
     sign(L, p, h.rights, minSalary(L.season), Math.max(2, Math.min(3, arcYearsFrom(L, p, L.season - 1))));
     msg(L, 'Front Office', `${p.name} arrives`, `${p.name}, whose draft rights you hold, has come over from overseas and signed with us.`); return; }
   if (tid != null && !managedSet(L).has(tid) && careerMode(L) === 'real' && teamPlayers(L, tid).length >= ROSTER_MAX) { // v40: CPU rosters are full (15); waive the weakest cheap player to make room
-    const minS = minSalary(L.season); const cut = teamPlayers(L, tid).filter(q => (q.contract?.amt || 0) <= minS * 2.2).sort((a, b) => a.ovr - b.ovr)[0]; if (cut) { release(L, cut, true); cut.waived = true; } }
+    const minS = minSalary(L.season); const strat = stratByTeam(L).get(tid) || 'mid';
+    const cut = teamPlayers(L, tid).filter(q => (q.contract?.amt || 0) <= minS * 2.2).sort((a, b) => rosterWorse(L, a, b, tid, strat))[0]; if (cut) { release(L, cut, true); cut.waived = true; } }
   if (tid != null && !managedSet(L).has(tid) && careerMode(L) === 'real' && (L.phase !== 'REGULAR' || teamPlayers(L, tid).length < ROSTER_MAX)) { // offseason: training camp trims CPU rosters to 15
     const ask = askingAmount(L, p, tid, 'fa', 3); const aff = canAfford(L, tid, ask);
     sign(L, p, tid, aff.ok ? ask : minSalary(L.season), arcYearsFrom(L, p, L.season - 1));
@@ -668,7 +710,9 @@ function leaveDraft(L) {
 }
 // ================= re-sign =================
 function cpuResign(L, p) {
-  const val = marketValue(p, L.season); const keep = p.ovr >= 60 + (p.age >= 32 ? 6 : 0) && payroll(L, p.tid) - p.contract.amt + val < capFor(L.season) * 1.6 && rand() < 0.75;
+  const val = marketValue(p, L.season);
+  const worth = rosterScore(L, p, { strat: stratByTeam(L).get(p.tid) || 'mid', money: false }) >= 60;
+  const keep = worth && payroll(L, p.tid) - p.contract.amt + val < capFor(L.season) * 1.6 && rand() < 0.75;
   if (stableRosters(L)) { const yrs = prefYears(p); p.contract = { amt: Math.round(val / 10) * 10, exp: L.season + yrs - 1, signed: L.season }; return; }
   if (keep && willingToNegotiate(L, p, p.tid)) { const yrs = prefYears(p); p.contract = { amt: Math.round(val * (0.95 + rand() * 0.15) / 10) * 10, exp: L.season + yrs - 1, signed: L.season }; }
   else { p.formerTid = p.tid; p.tid = -1; p.contract = null; }
