@@ -429,7 +429,7 @@ PAGES.team = (pg0) => {
   if (tb === 'roster') {
     const ps = E.teamPlayers(L, tid);
     body = E.POS.map(pos => { const g = ps.filter(p => p.pos === pos).sort((a, b) => b.ovr - a.ovr); if (!g.length) return '';
-      return `<div class="sect">${POSN[pos]} <span>${g.length}</span></div><div class="list">${g.map(p => playerRow(p)).join('')}</div>`; }).join('');
+      return `<div class="sect">${POSN[pos]} <span>${g.length}</span></div><div class="list">${g.map(p => playerRow(p, own || L.phase === 'PLAYOFFS' ? {} : { extra: `<button class="sm red" data-a="release" data-pid="${p.pid}">Release</button>` })).join('')}</div>`; }).join('');
     const picks = L.picks.filter(k => k.tid === tid).sort((a, b) => a.season - b.season || a.round - b.round);
     body += `<div class="sect">Draft picks</div><div class="list">${picks.map(k => `<div class="it"><div class="grow"><div class="nm">${E.pickLabel(L, k)}</div><div class="meta">${k.orig === tid ? 'Own pick' : `via ${esc(T(k.orig).city)}`}</div></div>${disc(k.orig, 28)}</div>`).join('') || '<div class="it muted">No picks.</div>'}</div>`;
   } else if (tb === 'staff') body = staffTab(L, tid, own);
@@ -586,7 +586,10 @@ PAGES.player = (pg0) => {
   if (own && L.phase !== 'PLAYOFFS') acts.push(`<button class="red" data-a="release" data-pid="${p.pid}">Release</button>`);
   if (p.tid === -1) acts.push(`<button class="go" data-a="offerSheet" data-pid="${p.pid}" data-kind="fa">Offer Contract</button>`);
   if (p.tid === -1 && !p.retired) acts.push(`<button data-a="signToSheet" data-pid="${p.pid}">Sign to team…</button>`);
-  if (p.tid >= 0 && !own && L.phase !== 'PLAYOFFS') acts.push(`<button class="blue" data-a="tradeFor" data-pid="${p.pid}">Trade For</button>`);
+  if (p.tid >= 0 && !own && L.phase !== 'PLAYOFFS') {
+    acts.push(`<button class="blue" data-a="tradeFor" data-pid="${p.pid}">Trade For</button>`);
+    acts.push(`<button class="red" data-a="release" data-pid="${p.pid}">Release</button>`);
+  }
   if (p.tid === -2 && L.phase === 'DRAFT' && L.draft.order[L.draft.idx] && E.draftControls(L, L.draft.order[L.draft.idx].tid) && p.draft?.year === L.season) acts.push(`<button class="go" data-a="draftPick" data-pid="${p.pid}">Draft</button>`);
   const editBtn = `<button class="rb" data-a="edit" data-pid="${p.pid}" aria-label="Edit player">${icon('pen', { s: 22 })}</button>`;
   return { title: 'Player', right: (p.tid === -2 ? `<button class="rb" data-a="short" data-pid="${p.pid}" aria-label="Shortlist">${starSvg(shortl ? 'full' : 'empty', 24)}</button>` : '') + editBtn, top, body, cta: acts.join(''), ctaWrap: acts.length > 3 };
@@ -1210,18 +1213,23 @@ function returnFAModal() {
   <div class="grid2" style="margin-top:12px"><button style="min-height:44px" data-a="close">Cancel</button><button class="go" style="min-height:44px" data-a="returnFAGo" ${n ? '' : 'disabled'}>Return ${n}</button></div></div>`;
 }
 function releaseNote(L, p) {
+  const t = L.teams[p.tid];
+  const club = t ? `${t.city} ${t.name}` : 'his team';
+  const abbr = t?.abbr || 'team';
   const c = E.releaseConsequence(L, p);
-  if (c.dead) return `His remaining salary (${M(c.amt)}/yr through ${c.exp}) stays on your cap.`;
-  if (c.ng) return 'This deal is non-guaranteed in the offseason, so nothing is added to your cap.';
-  return 'No salary is added to your cap.';
+  const money = c.dead ? `The ${M(c.amt)} per year still on his deal stays on the ${abbr} cap as dead money through ${c.exp}.`
+    : c.ng ? `This deal is non-guaranteed in the offseason, so nothing is added to the ${abbr} cap.`
+    : `No salary is added to the ${abbr} cap.`;
+  return `${money} ${p.name} of the ${club} becomes a free agent. His previous team is recorded as the ${club}. No one else is cut.`;
 }
 function renderReleaseAsk() {
   let el = document.getElementById('releaseAsk');
   const ask = S.releaseAsk;
   const L = S.L, p = ask && L ? E.getP(L, ask.pid) : null;
-  if (!p || p.tid !== L.userTid) { S.releaseAsk = null; el?.remove(); return; }
+  if (!p || p.tid < 0 || (S.releaseAsk.tid != null && p.tid !== S.releaseAsk.tid)) { S.releaseAsk = null; el?.remove(); return; }
+  const t = L.teams[p.tid];
   if (!el) { el = document.createElement('div'); el.id = 'releaseAsk'; el.className = 'modal'; el.dataset.a = 'releaseCancel'; document.body.appendChild(el); }
-  el.innerHTML = `<div class="sheet" data-a="noop"><div class="sh"><div><div style="font-weight:800">Release ${esc(p.name)}</div><div style="font-size:12px;opacity:.85">${esc(p.pos)} · ${p.contract ? M(p.contract.amt) + '/yr' : 'no contract'}</div></div><button class="x sm" data-a="releaseCancel" aria-label="Cancel release">${icon('close', { s: 18 })}</button></div><div class="wrap"><div class="card">${releaseNote(L, p)} He becomes a free agent. No one else is cut.</div>
+  el.innerHTML = `<div class="sheet" data-a="noop"><div class="sh"><div><div style="font-weight:800">Release ${esc(p.name)}</div><div style="font-size:12px;opacity:.85">${t ? esc(t.city + ' ' + t.name) : ''} · ${esc(p.pos)} · ${p.contract ? M(p.contract.amt) + '/yr' : 'no contract'}</div></div><button class="x sm" data-a="releaseCancel" aria-label="Cancel release">${icon('close', { s: 18 })}</button></div><div class="wrap"><div class="card">${releaseNote(L, p)}</div>
   <div class="grid2"><button style="min-height:44px" data-a="releaseCancel">Cancel</button><button class="red" style="min-height:44px" data-a="releaseDo">Release ${esc(p.name.split(' ').slice(-1)[0])}</button></div></div></div>`;
 }
 function modalView() { return ({ offers: offersModal, signTo: signToModal, offer: offerModal, holiday: holidayModal, cut: cutModal, draftTeam: draftTeamModal, returnFA: returnFAModal }[S.modal.type] || (() => ''))(); }
@@ -1624,16 +1632,16 @@ const A = {
   ilAct(d) { const r = E.activateIL(S.L, +d.pid); if (!r.ok) return toast(r.error); toast('Activated.'); autosave(); render(); },
   release(d) {
     const L = S.L, p = E.getP(L, +d.pid);
-    if (!p || p.tid !== L.userTid) return toast('Only a player on your team can be released.');
+    if (!p || p.tid < 0) return toast('That player is not on a roster.');
     if (L.phase === 'PLAYOFFS') return toast('Players cannot be released during the playoffs.');
-    S.releaseAsk = { pid: p.pid }; renderReleaseAsk();
+    S.releaseAsk = { pid: p.pid, tid: p.tid }; renderReleaseAsk();
   },
   releaseCancel() { S.releaseAsk = null; renderReleaseAsk(); },
   releaseDo() {
     if (S.releaseBusy || !S.releaseAsk) return;
-    const L = S.L, pid = S.releaseAsk.pid, p = E.getP(L, pid);
+    const L = S.L, pid = S.releaseAsk.pid, tid = S.releaseAsk.tid, p = E.getP(L, pid);
     S.releaseAsk = null; S.releaseBusy = true; renderReleaseAsk();
-    if (!p || p.tid !== L.userTid) { S.releaseBusy = false; return toast('That player is no longer on your team.'); }
+    if (!p || p.tid !== tid || p.tid < 0) { S.releaseBusy = false; return toast('That player is no longer on that team.'); }
     const name = p.name;
     E.release(L, p);
     S.releaseBusy = false;

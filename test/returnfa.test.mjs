@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { returnPlan, returnFreeAgents } from '../src/engine/offseason.js';
+import { release, returnPlan, returnFreeAgents } from '../src/engine/offseason.js';
 import { cap, payroll } from '../src/engine/league.js';
 import { ROSTER_MAX } from '../src/engine/constants.js';
 
@@ -104,4 +104,29 @@ test('the salary cap does not stop a return, and planning does not change the ro
   assert.equal(moved.returned.length, 1);
   assert.equal(star.tid, 1);
   assert.ok(payroll(L, 1) > cap(L));
+});
+
+test('releasing one player from a full previous team lets that free agent come back', () => {
+  const roster = Array.from({ length: ROSTER_MAX }, (_, i) => guy({ tid: 1, name: 'Stay ' + i, ovr: 55, contract: { amt: 1500, exp: 2004 } }));
+  const brand = guy({ name: 'Elton Brand', formerTid: 1, statsTid: 1, ovr: 85, age: 24 });
+  const L = league([...roster, brand]);
+  assert.equal(returnPlan(L).find(r => r.pid === brand.pid).full, true);
+  const before = JSON.stringify(L.players.map(p => [p.pid, p.tid, p.contract]));
+  const cut = roster[0];
+  release(L, cut);
+  release(L, cut);
+  assert.equal(cut.tid, -1);
+  assert.equal(cut.formerTid, 1);
+  assert.equal(cut.contract, null);
+  assert.equal(brand.tid, -1);
+  assert.equal(returnPlan(L).find(r => r.pid === brand.pid).full, false);
+  const moved = returnFreeAgents(L);
+  assert.deepEqual(moved.returned.map(p => p.name), ['Elton Brand']);
+  assert.equal(brand.tid, 1);
+  assert.ok(brand.contract?.amt > 0);
+  assert.equal(L.players.filter(p => p.tid === 1).length, ROSTER_MAX);
+  const again = JSON.stringify(L.players.map(p => [p.pid, p.tid]));
+  returnFreeAgents(L);
+  assert.equal(JSON.stringify(L.players.map(p => [p.pid, p.tid])), again);
+  assert.notEqual(JSON.stringify(L.players.map(p => [p.pid, p.tid, p.contract])), before);
 });

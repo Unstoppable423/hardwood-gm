@@ -171,3 +171,46 @@ test('a saved starter and the user roster are not the CPU cut', () => {
   cpuUpgrade(U, 2);
   assert.deepEqual(U.players.filter(p => p.tid === 0).map(p => p.pid).sort(), before);
 });
+
+test('a CPU team re-signs a clearly better young player when the new deal is over the cap', () => {
+  for (let seed = 1; seed <= 20; seed++) {
+    const star = guy({ tid: 1, name: 'Star', age: 24, ovr: 82, pot: 88, pos: 'PF', amt: 4000, exp: 2001, ng: false });
+    const cheap = Array.from({ length: 8 }, (_, i) => guy({ tid: 1, name: `Cheap${seed}-${i}`, age: 30, ovr: 55, pot: 55, pos: 'C', amt: 12000, exp: 2005, ng: false }));
+    const mine = guy({ tid: 0, name: 'Mine', age: 24, ovr: 82, pot: 88, pos: 'PF', amt: 4000, exp: 2001, ng: false });
+    const L = league([star, ...cheap, mine]);
+    setSeed(seed);
+    enterResign(L);
+    assert.equal(star.tid, 1, `seed ${seed}`);
+    assert.ok(star.contract && star.contract.exp >= L.season);
+    assert.ok(cheap.every(p => p.tid === 1));
+    assert.equal(mine.tid, 0);
+    assert.ok(L.expiring.includes(mine.pid));
+  }
+});
+
+test('a non-guaranteed fringe player can be released so the star deal is closer to fitting', () => {
+  const star = guy({ tid: 1, name: 'Star', age: 24, ovr: 82, pot: 88, pos: 'PF', amt: 4000, exp: 2001, ng: false });
+  const camp = Array.from({ length: 6 }, (_, i) => guy({ tid: 1, name: `Camp${i}`, age: 30, ovr: 55, pot: 55, pos: 'C', amt: 14000, exp: 2005, ng: true }));
+  const saved = guy({ tid: 1, name: 'Saved', age: 30, ovr: 55, pot: 55, pos: 'C', amt: 14000, exp: 2005, ng: true });
+  const L = league([star, ...camp, saved]);
+  L.teams[1].manualLineup = true;
+  L.teams[1].rotation = { starters: [saved.pid], minutes: {} };
+  setSeed(5);
+  enterResign(L);
+  assert.equal(star.tid, 1);
+  assert.equal(saved.tid, 1);
+  const cut = camp.filter(p => p.tid === -1);
+  assert.ok(cut.length >= 1 && cut.length <= 3);
+  assert.ok(cut.every(p => p.formerTid === 1 && p.contract === null));
+});
+
+test('a solid expiring player still walks when the deal does not fit, and nobody else is cut', () => {
+  const solid = guy({ tid: 1, name: 'Solid', age: 29, ovr: 64, pot: 64, pos: 'SG', amt: 3000, exp: 2001, ng: false });
+  const mates = Array.from({ length: 6 }, (_, i) => guy({ tid: 1, name: `Mate${i}`, age: 28, ovr: 60, pot: 60, pos: 'PF', amt: 14000, exp: 2005, ng: true }));
+  const L = league([solid, ...mates]);
+  setSeed(4);
+  enterResign(L);
+  assert.equal(solid.tid, -1);
+  assert.equal(solid.formerTid, 1);
+  assert.ok(mates.every(p => p.tid === 1));
+});

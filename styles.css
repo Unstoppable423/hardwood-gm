@@ -47,7 +47,7 @@ input,select{font:inherit;padding:9px 10px;border-radius:8px;border:1px solid va
 .list{background:var(--card);border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-bottom:10px}
 .list .it{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line)}.list .it:last-child{border-bottom:0}
 .list .it:nth-child(even){background:#00000005}
-.it .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.it .meta{font-size:11px;color:var(--sub);letter-spacing:.2px;text-transform:uppercase}
+.it .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.it .meta{font-size:11px;color:var(--sub);letter-spacing:.2px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mid{text-align:right;min-width:72px}.mid b{display:block;font-size:14px}.mid span{font-size:11px;color:var(--sub);text-transform:uppercase}
 .rt{text-align:center;min-width:58px}.rt .dw{font-size:10px;color:var(--sub);letter-spacing:.4px;margin-top:2px}
 /* rating squares */
