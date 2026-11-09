@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { aiRosterFix, cpuUpgrade, endHiatus, enterResign, rosterScore } from '../src/engine/offseason.js';
+import { aiRosterFix, birdRightsReturns, cpuUpgrade, endHiatus, enterResign, rosterScore } from '../src/engine/offseason.js';
 import { setSeed } from '../src/engine/rng.js';
 
 let n = 1;
@@ -126,6 +126,28 @@ test('an expiring young high-upside player is re-signed more often than the old 
   assert.ok(youngKept >= 12, `young kept ${youngKept}/24`);
   assert.ok(oldKept >= 12, `old kept ${oldKept}/24`);
   assert.equal(rawKept, 0);
+});
+
+test('a Bird-rights return does not waive a young upside player for a lesser veteran', () => {
+  const young = guy({ tid: 1, name: 'Young', age: 21, ovr: 58, pot: 78, pos: 'SG' });
+  const old = guy({ tid: 1, name: 'Old', age: 31, ovr: 61, pot: 61, pos: 'SG' });
+  const back = guy({ tid: -1, name: 'Returner', age: 30, ovr: 66, pot: 66, pos: 'SF' });
+  back.birdRights = true; back.formerTid = 1;
+  const L = league([...fillers(1, 13, 86), young, old, back]);
+  setSeed(11);
+  birdRightsReturns(L);
+  assert.equal(on(L, 'Young'), 1);
+  assert.equal(on(L, 'Old'), -1);
+  assert.equal(on(L, 'Returner'), 1);
+
+  const kid = guy({ tid: 1, name: 'Kid', age: 21, ovr: 60, pot: 78, pos: 'PG' });
+  const modest = guy({ tid: -1, name: 'Modest', age: 30, ovr: 61, pot: 61, pos: 'SG' });
+  modest.birdRights = true; modest.formerTid = 1;
+  const L2 = league([...fillers(1, 14, 86), kid, modest]);
+  setSeed(12);
+  birdRightsReturns(L2);
+  assert.equal(on(L2, 'Kid'), 1);
+  assert.equal(on(L2, 'Modest'), -1);
 });
 
 test('a saved starter and the user roster are not the CPU cut', () => {

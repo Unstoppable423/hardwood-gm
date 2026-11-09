@@ -50,12 +50,10 @@ export function advance(L) {
 export function startPreseason(L, first = false) {
   L.phase = 'PRESEASON'; L.day = 0; L.allStarDone = false; L.playoffs = null; L.games = {};
   if (!first) {
-    // 1996 start: notable free agents nobody could fit re-sign with their old team via Bird rights
-    for (const p of L.players) if (p.tid === -1 && p.birdRights && p.formerTid >= 0 && p.formerTid !== L.userTid && p.ovr >= 60) {
-      const ros = teamPlayers(L, p.formerTid); if (ros.length >= 15) release(L, ros.sort((a, b) => a.ovr - b.ovr)[0]);
-      sign(L, p, p.formerTid, askingAmount(L, p, p.formerTid, 'fa', 3), prefYears(p));
-      news(L, `${p.name} re-signs with the ${teamName(L, p.formerTid)}.`, 'sign');
-    }
+    // Notable free agents can return to their old team on Bird rights. A full roster only
+    // moves if the returner is worth more than its least valuable player. That choice uses
+    // the same score as other CPU cuts, so a young upside player is not dumped for a worse veteran.
+    birdRightsReturns(L);
     // late market: good free agents still unsigned take a 1-year discount deal where it fits
     const late = L.players.filter(p => p.tid === -1 && !p.retired && dispRating(p.ovr) >= 72).sort((a, b) => b.ovr - a.ovr);
     for (const p of late) {
@@ -170,6 +168,27 @@ export function cpuUpgrade(L, perTeam = 1) {
       news(L, `${t.abbr} waive ${cand.name} and sign ${fa.name}${strat === 'win' ? ' (win-now)' : strat === 'rebuild' ? ' (youth movement)' : ''}.`, 'fa', t.tid); n++; }
   }
   return n;
+}
+export function birdRightsReturns(L) {
+  const stratOf = stratByTeam(L);
+  for (const p of L.players) {
+    if (p.tid !== -1 || !p.birdRights || !(p.formerTid >= 0) || p.formerTid === L.userTid) continue;
+    const tid = p.formerTid;
+    const strat = stratOf.get(tid) || 'mid';
+    if (rosterScore(L, p, { strat, tid, money: false }) < 60) continue;
+    const ros = teamPlayers(L, tid);
+    if (ros.length >= ROSTER_MAX) {
+      const worst = ros.slice().sort((a, b) => rosterWorse(L, a, b, tid, strat))[0];
+      if (!worst) continue;
+      const come = rosterScore(L, p, { strat, tid, money: false });
+      const stay = rosterScore(L, worst, { strat, tid });
+      if (come < stay + 1) continue;
+      release(L, worst);
+    }
+    if (teamPlayers(L, tid).length >= ROSTER_MAX) continue;
+    sign(L, p, tid, askingAmount(L, p, tid, 'fa', 3), prefYears(p));
+    news(L, `${p.name} re-signs with the ${teamName(L, tid)}.`, 'sign');
+  }
 }
 function setExpectation(L) {
   const ranks = L.teams.map(t => ({ tid: t.tid, o: teamOvr(L, t.tid) })).sort((a, b) => b.o - a.o);
