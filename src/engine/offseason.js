@@ -729,12 +729,40 @@ function leaveDraft(L) {
 }
 // ================= re-sign =================
 function cpuResign(L, p) {
+  const tid = p.tid;
   const val = marketValue(p, L.season);
-  const worth = rosterScore(L, p, { strat: stratByTeam(L).get(p.tid) || 'mid', money: false }) >= 60;
-  const keep = worth && payroll(L, p.tid) - p.contract.amt + val < capFor(L.season) * 1.6 && rand() < 0.75;
-  if (stableRosters(L)) { const yrs = prefYears(p); p.contract = { amt: Math.round(val / 10) * 10, exp: L.season + yrs - 1, signed: L.season }; return; }
-  if (keep && willingToNegotiate(L, p, p.tid)) { const yrs = prefYears(p); p.contract = { amt: Math.round(val * (0.95 + rand() * 0.15) / 10) * 10, exp: L.season + yrs - 1, signed: L.season }; }
-  else { p.formerTid = p.tid; p.tid = -1; p.contract = null; }
+  const yrs = prefYears(p);
+  const signAt = (amt) => { p.contract = { amt: Math.round(amt / 10) * 10, exp: L.season + yrs - 1, signed: L.season }; };
+  if (stableRosters(L)) { signAt(val); return; }
+  const strat = stratByTeam(L).get(tid) || 'mid';
+  const mine = rosterScore(L, p, { strat, money: false });
+  const walk = () => { p.formerTid = tid; p.tid = -1; p.contract = null; };
+  // A role player can still walk: the cap line and the coin flip stay. A clearly better young player does not.
+  if (mine < 60 || !willingToNegotiate(L, p, tid)) { walk(); return; }
+  const mates = () => teamPlayers(L, tid).filter(q => q.pid !== p.pid);
+  const worst = mates().sort((a, b) => rosterWorse(L, a, b, tid, strat))[0];
+  const gap = worst ? mine - rosterScore(L, worst, { strat, money: false }) : 0;
+  const star = mine >= 78 || (mine >= 70 && gap >= 14);
+  if (!star && rand() >= 0.75) { walk(); return; }
+  const capLine = capFor(L.season) * 1.6;
+  const roomFor = () => capLine - (payroll(L, tid) - (p.contract?.amt || 0));
+  if (star) {
+    const team = L.teams[tid];
+    const protect = (q) => (team?.manualLineup && team.rotation?.starters?.includes(q.pid)) || q.rs === tid;
+    // Guaranteed money stays on the cap, so only a non-guaranteed fringe deal actually makes room.
+    for (let n = 0; n < 3 && roomFor() < val; n++) {
+      const fringe = mates().filter(q => !protect(q) && q.contract?.ng && rosterScore(L, q, { strat, money: false }) <= mine - 12);
+      if (!fringe.length) break;
+      fringe.sort((a, b) => rosterWorse(L, a, b, tid, strat));
+      if (releaseConsequence(L, fringe[0]).dead) break;
+      release(L, fringe[0], true);
+    }
+    signAt(val * (0.95 + rand() * 0.15));
+    return;
+  }
+  const ask = val * (0.95 + rand() * 0.15);
+  if (roomFor() >= ask) { signAt(ask); return; }
+  walk();
 }
 export function enterResign(L) {
   L.phase = 'RESIGN'; L.season += 1; ensureFuturePicks(L);
