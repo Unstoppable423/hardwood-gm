@@ -415,7 +415,7 @@ function playerRow(p, opts = {}) {
   const delta = p.prevOvr != null && p.ovr !== p.prevOvr ? `<span class="${p.ovr > p.prevOvr ? 'up' : 'dn'}">${p.ovr > p.prevOvr ? '↑' : '↓'}${Math.max(1, Math.abs(R(p.ovr) - R(p.prevOvr)))}</span>` : '';
   const rowAct = opts.act === 'noop' ? '' : ` data-a="${opts.act || 'player'}" data-pid="${p.pid}"`;
   return `<div class="it"${rowAct}>${avatar(p, 42)}
-   <div class="grow"><div class="nm">${esc(p.name)}${blk} ${inj}</div><div class="meta">${opts.meta ?? `${E.posLabel(p)} · ${yrsPro(p) ? `EXP ${yrsPro(p)} yrs` : 'Rookie'} · ${p.contract ? `${M(p.contract.amt)} · ${yl} yr${yl === 1 ? '' : 's'}` : 'No contract'}`}</div></div>
+   <div class="grow"><div class="nm">${esc(p.name)}${blk} ${inj}</div><div class="meta">${opts.meta ?? `${E.posLabel(p)} · Age ${E.ageNow(L, p)} · ${p.contract ? `${M(p.contract.amt)} · ${yl} yr${yl === 1 ? '' : 's'}` : 'No contract'}`}</div></div>
    ${opts.extra || ''}<div class="rt">${hideR(p) ? sq(null) : sq(p.ovr)}<div class="dw">${delta} ${devWord(p)}</div></div></div>`;
 }
 PAGES.team = (pg0) => {
