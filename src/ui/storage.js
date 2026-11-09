@@ -15,7 +15,3 @@ export async function loadSlot(slot) { const s = await tx('readonly', st => st.g
 export async function slotMeta(slot) { return tx('readonly', st => st.get(`M${slot}`)); }
 export async function listSlots() { const out = []; for (const s of [1, 2, 3]) out.push(await slotMeta(s) || null); return out; }
 export async function deleteSlot(slot) { await tx('readwrite', st => { st.delete(`L${slot}`); st.delete(`M${slot}`); }); }
-export function exportJSON(L) {
-  const blob = new Blob([serialize(L)], { type: 'application/json' }); const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = `hardwood-gm-${L.teams[L.userTid].abbr}-${L.season}-${L.phase}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-}

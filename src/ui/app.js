@@ -1,9 +1,10 @@
 // Hardwood GM UI — PGM2-style page flow (hamburger drawer, teal header, page stack, green CTAs)
 import * as E from '../engine/index.js';
 import { icon, injIcon, starRow, starRow2, starSvg } from './icons.js';
-import { saveSlot, loadSlot, listSlots, deleteSlot, exportJSON } from './storage.js';
+import { saveSlot, loadSlot, listSlots, deleteSlot, serialize } from './storage.js';
 import { viewportBox } from './viewport.js';
 import { parseImportedSave } from './savefile.js';
+import { CANCEL_MESSAGE, backupFilename, backupIntro, backupRoutes, backupSizeLabel, backupText, downloadAttemptResult, runBackupRoute, shareFileFor } from './backup.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1027,7 +1028,7 @@ PAGES.messages = () => {
 PAGES.settings = () => {
   const L = S.L; const st = L.settings;
   const sel = (k, opts) => `<select data-set="${k}">${opts.map(([v, t]) => `<option value="${v}" ${String(st[k]) === String(v) ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
-  return { title: 'Settings', body: `<div class="sect">Save</div><div class="card"><div class="kv"><span>Slot</span><b>${S.slot}</b></div><div class="grid2" style="margin-top:8px"><button class="go" data-a="saveNow">Save now</button><button data-a="export">Export backup</button><button data-a="exportRoster">Export roster file</button></div></div>
+  return { title: 'Settings', body: `<div class="sect">Save</div><div class="card"><div class="kv"><span>Slot</span><b>${S.slot}</b></div><div class="grid2" style="margin-top:8px"><button class="go" data-a="saveNow">Save now</button><button data-a="export">Export backup</button><button data-a="exportRoster">Export roster file</button></div><div class="muted" style="margin-top:8px">Export backup asks this browser to save, share, or copy the file. It does not change this slot.</div></div>
   <div class="sect">Franchise</div><div class="card"><div class="muted">Salary cap ${({ soft: 'Soft', hard: 'Hard', off: 'Off' })[st.capMode] || 'Soft'} · CPU trades ${st.cpuTrades ? 'On' : 'Off'} · ${st.seasonGames || 82} games · ${st.playoffTeams || 16}-team playoffs · ${st.draftClasses === 'real' ? 'Real drafts' : 'Generated drafts'}</div><button class="go" style="width:100%;margin-top:8px" data-a="goto" data-n="franchise">Franchise Settings</button></div>
   <div class="sect">Difficulty sliders</div><div class="card"><div class="grid2">
    <div><div class="muted">Trades / owner</div>${sel('difficulty', [['Easy', 'Easy'], ['Medium', 'Medium'], ['Hard', 'Hard']])}</div>
@@ -1300,6 +1301,76 @@ function startLive(res) {
 }
 const curAsk = (L, p, kind) => kind === 'resign' ? p.resignAsk : kind === 'ext' ? E.extensionAsk(L, p) : E.askingAmount(L, p, L.userTid, L.phase === 'REGULAR' ? 'inseason' : 'fa', E.faRound(L) || 3);
 let holdT = null;
+let backupState = null;
+function browserBackupIo() {
+  return {
+    showSaveFilePicker: (opts) => window.showSaveFilePicker(opts),
+    share: (data) => navigator.share(data),
+    writeText: async (t) => {
+      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') throw new Error('Clipboard is not available in this browser.');
+      await navigator.clipboard.writeText(t);
+    },
+  };
+}
+function closeBackupSheet() {
+  if (backupState?.url) URL.revokeObjectURL(backupState.url);
+  backupState = null;
+  document.getElementById('backupAsk')?.remove();
+}
+function showBackupResult(r) {
+  if (!backupState || !r) return;
+  backupState.outcome = r;
+  const el = document.getElementById('backupStatus');
+  if (el) { el.textContent = r.message; el.classList.toggle('err', r.ok === false && !r.cancelled); }
+  if (!r.reveal) return;
+  let ta = document.getElementById('backupText');
+  if (!ta) {
+    ta = document.createElement('textarea');
+    ta.id = 'backupText';
+    ta.readOnly = true;
+    ta.setAttribute('aria-label', 'Backup JSON');
+    document.querySelector('#backupAsk .sheet .wrap')?.appendChild(ta);
+  }
+  ta.value = backupState.text;
+  ta.hidden = false;
+  try { ta.scrollIntoView({ block: 'nearest' }); ta.focus(); ta.setSelectionRange(0, 0); } catch { /* the text is on screen either way */ }
+}
+function openBackupSheet() {
+  const L = S.L;
+  if (!L) { toast('No game is open to export.'); return; }
+  let text, filename;
+  try { text = backupText(L, serialize); filename = backupFilename(L); }
+  catch (err) { toast('Could not build the backup. ' + (err?.message || 'Nothing was saved.'), 5000); return; }
+  const file = shareFileFor(navigator, filename, text);
+  const caps = {
+    canSave: typeof window.showSaveFilePicker === 'function',
+    canShare: !!file,
+    canDownload: typeof document.createElement('a').download === 'string',
+  };
+  const routes = backupRoutes(caps);
+  if (backupState?.url) URL.revokeObjectURL(backupState.url);
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  backupState = { text, filename, file, url, outcome: null, caps };
+  let el = document.getElementById('backupAsk');
+  if (!el) { el = document.createElement('div'); el.id = 'backupAsk'; el.className = 'modal'; document.body.appendChild(el); }
+  el.dataset.a = 'backupClose';
+  const primary = !caps.canSave && !caps.canShare;
+  const actions = [
+    caps.canSave ? '<button class="go" data-a="backupSave">Save file…</button>' : '',
+    caps.canShare ? `<button class="${caps.canSave ? '' : 'go'}" data-a="backupShare">Share or Save to Files…</button>` : '',
+    caps.canDownload ? `<a class="backup-dl${primary ? ' primary' : ''}" id="backupDownload" href="${url}" download="${esc(filename)}" target="_blank" rel="noopener">Download ${esc(filename)}</a>` : '',
+    '<button data-a="backupCopy">Copy backup text</button>',
+    '<button class="ghost" data-a="backupClose">Close</button>',
+  ].filter(Boolean).join('');
+  el.innerHTML = `<div class="sheet" data-a="noop"><div class="sh"><div>Export backup</div><button class="x sm" data-a="backupClose" aria-label="Close export">${icon('close', { s: 18 })}</button></div>
+    <div class="wrap"><div class="card plain">${esc(backupIntro(caps))}</div>
+    <div class="muted" style="padding:0 2px 6px">Complete backup · ${esc(backupSizeLabel(text))} · ${esc(filename)}</div>
+    <div class="card plain" id="backupStatus" role="status">Choose an option. ${routes.includes('save') ? 'Only Save file confirms the write.' : 'This browser cannot confirm that a file was saved.'} Closing without choosing leaves your game unchanged.</div>
+    <div class="backup-actions">${actions}</div></div></div>`;
+  document.getElementById('backupDownload')?.addEventListener('click', () => {
+    if (backupState) showBackupResult(downloadAttemptResult(backupState.filename));
+  });
+}
 const A = {
   noop() {},
   toTitle() { S.view = 'title'; render(); },
@@ -1405,7 +1476,11 @@ const A = {
     if (k.tid === L.userTid) S.trade = { tid: S.trade?.tid != null && S.trade.tid !== L.userTid ? S.trade.tid : (L.userTid + 1) % L.teams.length, a: [], ap: [k.id], b: [], bp: [] }; else S.trade = { tid: k.tid, a: [], ap: [], b: [], bp: [k.id] };
     S.tab.trade = 'machine'; S.fromDraft = true; go('trade'); },
   async saveNow() { await saveSlot(S.slot, S.L); S.drawer = false; render(); toast('Saved to slot ' + S.slot); },
-  export() { exportJSON(S.L); },
+  export() { openBackupSheet(); },
+  backupClose() { const quiet = !!backupState?.outcome; closeBackupSheet(); if (!quiet) toast(CANCEL_MESSAGE, 4500); },
+  async backupSave() { if (!backupState) return; showBackupResult(await runBackupRoute('save', { text: backupState.text, filename: backupState.filename, io: browserBackupIo() })); },
+  async backupShare() { if (!backupState) return; showBackupResult(await runBackupRoute('share', { text: backupState.text, filename: backupState.filename, file: backupState.file, io: browserBackupIo() })); },
+  async backupCopy() { if (!backupState) return; showBackupResult(await runBackupRoute('copy', { text: backupState.text, filename: backupState.filename, io: browserBackupIo() })); },
   exportRoster() { const f = E.exportRosterFile(S.L); const blob = new Blob([JSON.stringify(f, null, 1)], { type: 'application/json' }); const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = `hardwood-gm-rosters-${S.L.season}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); toast(`Exported ${f.players.length} players. Edit the file and pick it under New Game → Rosters → Roster file.`, 4000); },
   rosterPick() { $('#rosterFile').click(); },
@@ -1595,6 +1670,9 @@ const A = {
   takeJob(d) { const L = S.L; if (L.gm.fired) L.jobMarket = E.jobMarket(L); const r = E.changeTeam(L, +d.tid); if (!r.ok) return toast(r.error); S.trade = null; toast(`Welcome to ${T(L.userTid).city}!`); autosave(); root('home'); },
 };
 document.addEventListener('click', (e) => {
+  // A real download link has to keep its default action. preventDefault here
+  // would swallow the file the same way a detached click does.
+  if (e.target.closest('a[download]')) return;
   const el = e.target.closest('[data-a]'); if (!el || el.tagName === 'SELECT' || (el.tagName === 'INPUT' && el.type !== 'checkbox')) return;
   if (el.tagName === 'INPUT' && el.type === 'checkbox') return;
   if (el.dataset.hold && e.detail === 0) return;
