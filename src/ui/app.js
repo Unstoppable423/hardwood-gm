@@ -1233,9 +1233,31 @@ function offersModal() {
   ${list.length ? list.map(x => { const d = descOffer(L, x.offer); return `<div class="card"><div class="row">${disc(x.offer.tidB, 32)}<div class="grow"><div class="nm">${esc(T(x.offer.tidB).city)} ${esc(T(x.offer.tidB).name)}</div><div class="meta">Value ${Math.round(x.offer.value || 0)}</div></div><button class="go sm" data-a="offAccept" data-id="${x.id}">Accept</button></div><div style="font-size:13px;margin-top:4px"><span class="muted">You get:</span> ${d.get}</div></div>`; }).join('') : '<div class="card muted">No team made an offer right now. Put him on the block and offers may come later.</div>'}
   <div class="grid2" style="margin-top:8px">${onBlock ? '<button disabled>On trade block</button>' : `<button class="blue" data-a="block" data-pid="${p.pid}">Add to Trade Block</button>`}<button data-a="close">Back</button></div></div>`;
 }
+function signRoomNote(L, t) {
+  const yours = t.tid === L.userTid;
+  const own = yours ? `This is your team, so open one of its players and tap Release.` : `Open Menu, then Settings, then Franchise Settings. Under Control any team, choose the ${esc(t.name)} and tap Control team. Release one player, then tap Back to your team.`;
+  return `${own} A player on the injured list does not count toward the ${E.ROSTER_MAX}. Come back to this free agent and choose the team again. This screen does not release anyone.`;
+}
 function signToModal() {
-  const L = S.L, p = E.getP(L, S.modal.pid); const amt = E.fairContract(L, p);
-  return sheetHead(`Sign ${esc(p.name)} to…`, `Commissioner signing · ${M(amt)}/yr · max length · ignores interest and cap`) + `<div class="wrap"><div class="list">${teamsAZ(L).map(t => `<button class="it" style="width:100%;text-align:left" data-a="signToTeam" data-tid="${t.tid}">${esc(t.city + ' ' + t.name)}${t.tid === p.formerTid ? ' <span class="tag" style="background:#e3e7ec;color:#111">Previous team</span>' : ''} <span class="muted">${E.commishYears(L, p, t.tid)} yrs · ${E.activeCount(L, t.tid)}/${E.ROSTER_MAX}</span></button>`).join('')}</div></div>`;
+  const L = S.L, p = E.getP(L, S.modal.pid);
+  if (!p || p.tid !== -1 || p.retired) return sheetHead('Sign to team', '') + `<div class="wrap"><div class="card" id="signBlock">He is not a free agent. Nothing was signed.</div><button style="width:100%;min-height:48px" data-a="close">Close</button></div>`;
+  const ask = S.modal.ask;
+  if (ask) {
+    const t = L.teams[ask.tid];
+    const plan = E.commissionerSignPlan(L, p, ask.tid);
+    if (!t || !plan.ok) {
+      const full = plan.full && t;
+      return sheetHead(full ? `${esc(t.name)} is full` : 'Cannot sign', full ? `${plan.active}/${plan.max} active` : '') + `<div class="wrap">
+        <div class="card" id="signBlock">${full ? `${esc(t.city)} ${esc(t.name)} already has ${plan.active} active players, the limit of ${plan.max}. ${esc(p.name)} was not signed. Nobody was released.` : esc(plan.error)}</div>
+        ${full ? `<div class="card">${signRoomNote(L, t)}</div>` : ''}
+        <button style="width:100%;min-height:48px" data-a="signToBack">Back to teams</button></div>`;
+    }
+    return sheetHead(`Sign ${esc(p.name)}`, `${M(plan.amt)}/yr · ${plan.years} years · ignores interest and cap`) + `<div class="wrap">
+      <div class="card" id="signAsk">Sign ${esc(p.name)} to the ${esc(t.city)} ${esc(t.name)} for ${plan.years} years at ${M(plan.amt)}/yr.${plan.previous ? ' Previous team in this save.' : ''} His interest and the salary cap are not checked. The roster has room (${plan.active}/${plan.max}). Nothing is signed until you tap Sign him.</div>
+      <div class="grid2"><button style="min-height:48px" data-a="signToBack">Cancel</button><button class="go" style="min-height:48px" data-a="signToDo">Sign him</button></div></div>`;
+  }
+  const amt = E.fairContract(L, p);
+  return sheetHead(`Sign ${esc(p.name)} to…`, `Commissioner signing · ${M(amt)}/yr · max length · ignores interest and cap`) + `<div class="wrap"><div class="card" id="signListNote">A team at ${E.ROSTER_MAX}/${E.ROSTER_MAX} is full. Tap it to see why and how to make a spot. A team with room asks you to confirm. Nothing is signed from this list.</div><div class="list">${teamsAZ(L).map(t => `<button class="it signteam" data-a="signToTeam" data-tid="${t.tid}"><span class="nm">${esc(t.city + ' ' + t.name)}${t.tid === p.formerTid ? ' <span class="tag" style="background:#e3e7ec;color:#111">Previous team</span>' : ''}</span><span class="muted">${E.commishYears(L, p, t.tid)} yrs · ${E.activeCount(L, t.tid)}/${E.ROSTER_MAX}</span></button>`).join('')}</div></div>`;
 }
 function offerModal() {
   const L = S.L, p = E.getP(L, S.modal.pid); const kind = S.modal.kind;
@@ -1550,8 +1572,25 @@ const A = {
   offRaise(d) { S.modal.raise = +d.v; renderModal(); },
   getOffers(d) { const L = S.L; overlay('Calling every team'); const ids = E.instantOffers(L, +d.pid); overlay(null); S.modal = { type: 'offers', pid: +d.pid, ids }; autosave(); renderModal(); },
   signToSheet(d) { S.modal = { type: 'signTo', pid: +d.pid }; renderModal(); },
-  signToTeam(d) { const L = S.L, p = E.getP(L, S.modal.pid); const tid = +d.tid; if (E.activeCount(L, tid) >= E.ROSTER_MAX && !confirm(`${L.teams[tid].abbr} already has ${E.ROSTER_MAX} active players. Sign anyway?`)) return;
-    E.commissionerSign(L, p, tid); S.modal = null; renderModal(); toast(`${p.name} signed with ${L.teams[tid].abbr}`); autosave(); render(); },
+  signToTeam(d) {
+    if (S.signBusy || S.modal?.type !== 'signTo') return;
+    const p = E.getP(S.L, S.modal.pid);
+    if (!p) return;
+    S.modal.ask = { tid: +d.tid };
+    renderModal();
+  },
+  signToBack() { if (S.signBusy || S.modal?.type !== 'signTo') return; S.modal.ask = null; renderModal(); },
+  signToDo() {
+    if (S.signBusy || S.modal?.type !== 'signTo' || S.modal.ask == null) return;
+    const L = S.L, tid = S.modal.ask.tid, p = E.getP(L, S.modal.pid);
+    const plan = E.commissionerSignPlan(L, p, tid);
+    if (!plan.ok) { S.modal.ask = { tid }; renderModal(); return; }
+    S.signBusy = true;
+    const r = E.commissionerSign(L, p, tid);
+    S.signBusy = false;
+    if (!r.ok) { S.modal.ask = { tid }; renderModal(); return; }
+    S.modal = null; renderModal(); autosave(); render(); toast(`${p.name} signed with ${L.teams[tid].abbr}`);
+  },
   returnFAs() { const plan = E.returnPlan(S.L); if (!plan.some(r => !r.full)) return toast('No free agent can return to a previous team right now.'); S.modal = { type: 'returnFA', includeUser: false }; renderModal(); },
   returnFAMe() { if (S.modal?.type !== 'returnFA') return; S.modal.includeUser = !S.modal.includeUser; renderModal(); },
   returnFAGo() {

@@ -878,10 +878,30 @@ export function ensureFAPool(L, n = 24) {
   if (added) reindex(L); return added;
 }
 export function fairContract(L, p) { return Math.round(clamp(marketValue(p, L.season), minSalary(L.season), maxSalary(L.season, p)) / 10) * 10; }
-// commissioner-style signing: any FA to any team at a fair deal, ignoring interest and the cap
-export function commissionerSign(L, p, tid) { L.fa ||= { offers: {}, round: 0 }; L.fa.offers ||= {}; delete L.fa.offers[p.pid]; sign(L, p, tid, fairContract(L, p), commishYears(L, p, tid)); return p; }
 // longest deal the rules allow (previous team = Bird rights / own-player max)
 export function commishYears(L, p, tid) { return maxYears(L, tid === p.formerTid); }
+// Commissioner signing ignores interest and the salary cap. It does not ignore the active-roster limit,
+// and it never releases someone else to make a spot.
+export function commissionerSignPlan(L, p, tid) {
+  tid = +tid;
+  const t = L.teams?.[tid];
+  if (!p || p.retired || p.tid !== -1) return { ok: false, full: false, error: 'He is not a free agent. Nothing was signed.' };
+  if (!t || t.inactive) return { ok: false, full: false, error: 'That team is not in the league. Nothing was signed.' };
+  const active = teamPlayers(L, tid).filter(x => !x.il).length;
+  const years = commishYears(L, p, tid);
+  const amt = fairContract(L, p);
+  const previous = Number.isInteger(p.formerTid) && tid === p.formerTid;
+  if (active >= ROSTER_MAX) return { ok: false, full: true, active, max: ROSTER_MAX, years, amt, previous, error: `${t.city} ${t.name} already has ${active} active players.` };
+  return { ok: true, full: false, active, max: ROSTER_MAX, years, amt, previous };
+}
+// commissioner-style signing: any free agent to any team at a fair deal, ignoring interest and the salary cap
+export function commissionerSign(L, p, tid) {
+  const plan = commissionerSignPlan(L, p, tid);
+  if (!plan.ok) return plan;
+  L.fa ||= { offers: {}, round: 0 }; L.fa.offers ||= {}; delete L.fa.offers[p.pid];
+  sign(L, p, tid, plan.amt, plan.years);
+  return { ok: true, years: plan.years, amt: plan.amt };
+}
 // A free agent's previous team is the club stored on him in this save (formerTid) when that stay
 // was recent. Real-life clubs are never looked up, and a missing or stale mark is not a destination.
 function recentFormerTid(L, p) {
