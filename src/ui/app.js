@@ -325,7 +325,7 @@ PAGES.home = () => {
       cta.push(`<button class="blue" data-a="simRound">Sim Round</button>`, ...(mine ? [`<button style="flex:.7" data-a="simOneDay">Sim Game</button>`] : []), `<button class="go" data-a="playNext">${mine ? 'Play Game' : 'Sim Day'}</button>`, `<button class="ghost" style="flex:.6" data-a="nav" data-p="league" data-t="playoffs">Bracket</button>`);
       break;
     }
-    case 'AWARDS': parts.push(summaryCard(L)); cta.push(`<button class="go" data-a="advance">Continue to Staff</button>`); break;
+    case 'AWARDS': parts.push(summaryCard(L)); cta.push(`<button class="blue" data-a="nav" data-p="night">Awards night</button>`, `<button class="go" data-a="advance">Continue to Staff</button>`); break;
     case 'STAFF': parts.push(`<div class="card"><h3>Staff changes</h3>Coaches, scouts and physios can only be changed once a year — now. Expired contracts are vacant.</div>`);
       cta.push(`<button class="blue" data-a="nav" data-p="team" data-t="staff">Manage Staff</button>`, `<button class="go" data-a="advance">Draft Lottery</button>`); break;
     case 'LOTTERY': parts.push(lotteryCard(L)); cta.push(`<button class="go" data-a="advance">Go to Draft Day</button>`); break;
@@ -379,7 +379,9 @@ function summaryCard(L) {
   <div class="kv"><span>Legacy score</span><b>${L.gm.legacy}</b></div><div class="kv"><span>Your award winners</span><b>${rv.awardWinners ?? 0}</b></div>
   ${(L.jobMarket || []).length ? `<button class="blue" style="width:100%;margin-top:8px" data-a="nav" data-p="gm" data-t="jobs">${L.gm.fired ? 'Find a new job' : 'Stay — or explore other jobs'} (${L.jobMarket.length} interested)</button>` : ''}</div>
   <div class="sect">Awards</div><div class="card">${aw('mvp', 'MVP')}${aw('fmvp', 'Finals MVP')}${aw('dpoy', 'Defensive POY')}${aw('roy', 'Rookie of the Year')}${aw('sixth', 'Sixth Man')}${aw('mip', 'Most Improved')}
-  ${a.allNBA.map((tm, i) => `<div class="kv"><span>All-NBA ${['1st', '2nd', '3rd'][i]}</span><span style="text-align:right;font-size:13px">${tm.map(x => esc(x.name)).join(', ')}</span></div>`).join('')}</div>
+  ${a.allNBA.map((tm, i) => `<div class="kv"><span>All-NBA ${['1st', '2nd', '3rd'][i]}</span><span style="text-align:right;font-size:13px">${tm.map(x => esc(x.name)).join(', ')}</span></div>`).join('')}
+  ${(a.allDefense || []).map((tm, i) => `<div class="kv"><span>All-Defense ${['1st', '2nd'][i]}</span><span style="text-align:right;font-size:13px">${tm.map(x => esc(x.name)).join(', ')}</span></div>`).join('')}
+  ${(a.allRookie || []).map((tm, i) => `<div class="kv"><span>All-Rookie ${['1st', '2nd'][i]}</span><span style="text-align:right;font-size:13px">${tm.map(x => esc(x.name)).join(', ')}</span></div>`).join('')}</div>
   ${ret.length ? `<div class="sect">Retirement watch</div><div class="list">${ret.map(p => `<div class="it">${avatar(p, 36)}<div class="grow"><div class="nm">${esc(p.name)}</div><div class="meta">Age ${p.age} · OVR ${R(p.ovr)}${p.convinced === false ? ' · not coming back' : ''}</div></div>${p.convinced === undefined ? `<button class="sm blue" data-a="convince" data-pid="${p.pid}">Convince</button>` : ''}</div>`).join('')}</div>` : ''}`;
 }
 function lotteryCard(L) {
@@ -973,10 +975,28 @@ function playoffsTab(L) {
   const champ = b.champ ? `<div class="card center">${disc(b.champ.tid, 56)}<div class="big">${esc(b.champ.city)} ${esc(b.champ.name)}</div><div class="muted">Champions</div></div>` : '';
   return `<div class="card plain">${esc(b.note)}</div>${season}${confs}${fin}${champ}`;
 }
+function voteList(title, rows, winner) {
+  const list = rows?.length ? rows : (winner ? [{ ...winner, share: null }] : []);
+  if (!list.length) return `<div class="sect">${esc(title)}</div><div class="card muted">Nobody qualified.</div>`;
+  return `<div class="sect">${esc(title)}</div><div class="list">${list.map((r, i) => `<div class="it" data-a="player" data-pid="${r.pid}"><span class="tag" style="background:${i === 0 ? 'var(--gold)' : 'var(--line)'};color:${i === 0 ? '#1a1404' : 'var(--ink)'}">${i === 0 ? '1st' : i + 1}</span><div class="grow"><div class="nm">${esc(r.name)}</div><div class="meta">${esc(r.abbr || '')}${r.share == null ? '' : ` · ${Number(r.share).toFixed(1)}%`}</div>${r.share == null ? '' : `<div class="bar"><i style="width:${Math.min(100, r.share)}%;background:var(--hdr)"></i></div>`}</div></div>`).join('')}</div>`;
+}
+function teamLines(label, teams) {
+  if (!teams?.some(t => t?.length)) return '';
+  return teams.map((tm, i) => `<div class="kv"><span>${label} ${['1st', '2nd', '3rd'][i] || i + 1}</span><span style="text-align:right;font-size:13px">${(tm || []).map(x => esc(x.name)).join(', ') || '—'}</span></div>`).join('');
+}
+function awardsNightBody(h) {
+  const a = h?.awards;
+  if (!a) return '<div class="card muted">Awards were not stored for this season.</div>';
+  const b = a.ballot;
+  const note = b
+    ? 'Vote shares are this save\'s ballot. Winning matters for MVP. Only a rookie is on the Rookie ballot. Sixth Man is a bench player. Finals MVP comes from the champion\'s playoff games.'
+    : 'Vote shares were not stored for this season. The names below are the winners this save kept.';
+  return `<div class="card plain">${note}</div>${voteList('Most Valuable Player', b?.mvp, a.mvp)}${voteList('Finals MVP', b?.fmvp, a.fmvp)}${voteList('Defensive Player of the Year', b?.dpoy, a.dpoy)}${voteList('Rookie of the Year', b?.roy, a.roy)}${voteList('Sixth Man', b?.sixth, a.sixth)}${voteList('Most Improved', b?.mip, a.mip)}
+    <div class="sect">Teams</div><div class="card">${teamLines('All-NBA', a.allNBA)}${teamLines('All-Defense', a.allDefense)}${teamLines('All-Rookie', a.allRookie) || '<div class="muted">No team ballot stored.</div>'}</div>`;
+}
 function awardCard(h) {
-  const aw = h.awards;
-  const row = (k, label) => aw?.[k] ? `<div class="kv"><span>${label}</span><b>${aw[k].pid != null ? `<span class="plink" data-a="player" data-pid="${aw[k].pid}">${esc(aw[k].name)}</span>` : esc(aw[k].name || '—')}</b></div>` : '';
-  return `<div class="card">${h.missingAwards ? '<div class="muted">Awards were not stored for this season.</div>' : `${row('mvp', 'MVP')}${row('fmvp', 'Finals MVP')}${row('dpoy', 'Defensive POY')}${row('roy', 'Rookie of the Year')}${row('sixth', 'Sixth Man')}${row('mip', 'Most Improved')}` || '<div class="muted">No award names stored.</div>'}</div>`;
+  if (h?.awards) return awardsNightBody(h);
+  return '<div class="card"><div class="muted">Awards were not stored for this season.</div></div>';
 }
 function awardsTab(L) {
   const pow = (L.pow || []).filter(x => x.season === L.season).slice(0, 30);
@@ -996,6 +1016,11 @@ function historyTab(L) {
     ${h.leaders?.ast ? `<div class="kv"><span>Assists</span><b>${esc(h.leaders.ast.name)} ${h.leaders.ast.v}</b></div>` : ''}
   </div>`).join('')}`;
 }
+PAGES.night = () => {
+  const L = S.L; const h = L.history?.at(-1);
+  if (!h) return { title: 'Awards night', body: '<div class="card muted">No season has reached the awards yet.</div>' };
+  return { title: 'Awards night', body: `<div class="card center"><div class="muted">${seasonLbl(h.season)}</div><div class="big">Awards night</div></div>${awardsNightBody(h)}` };
+};
 function hofTab(L) {
   let hof = L.hof.slice().reverse(); if (S.hofMine) hof = hof.filter(h => (h.tids || []).includes(L.userTid));
   const watch = E.hofWatch(L, 12);
