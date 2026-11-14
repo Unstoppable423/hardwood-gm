@@ -978,7 +978,28 @@ function playoffsTab(L) {
 function voteList(title, rows, winner) {
   const list = rows?.length ? rows : (winner ? [{ ...winner, share: null }] : []);
   if (!list.length) return `<div class="sect">${esc(title)}</div><div class="card muted">Nobody qualified.</div>`;
-  return `<div class="sect">${esc(title)}</div><div class="list">${list.map((r, i) => `<div class="it" data-a="player" data-pid="${r.pid}"><span class="tag" style="background:${i === 0 ? 'var(--gold)' : 'var(--line)'};color:${i === 0 ? '#1a1404' : 'var(--ink)'}">${i === 0 ? '1st' : i + 1}</span><div class="grow"><div class="nm">${esc(r.name)}</div><div class="meta">${esc(r.abbr || '')}${r.share == null ? '' : ` · ${Number(r.share).toFixed(1)}%`}</div>${r.share == null ? '' : `<div class="bar"><i style="width:${Math.min(100, r.share)}%;background:var(--hdr)"></i></div>`}</div></div>`).join('')}</div>`;
+  return `<div class="sect">${esc(title)}</div><div class="list">${list.map((r, i) => `<div class="it" data-a="player" data-pid="${r.pid}"><span class="tag" style="background:${i === 0 ? 'var(--gold)' : 'var(--line)'};color:${i === 0 ? '#1a1404' : 'var(--ink)'}">${i === 0 ? '1st' : i + 1}</span><div class="grow"><div class="nm">${esc(r.name)}</div><div class="meta">${esc(r.abbr || '')}${r.w != null ? ` · ${r.w}-${r.l}` : ''}${r.line ? ' · ' + esc(r.line) : ''}${r.share == null ? '' : ` · ${Number(r.share).toFixed(1)}%`}</div>${r.share == null ? '' : `<div class="bar"><i style="width:${Math.min(100, r.share)}%;background:var(--hdr)"></i></div>`}</div></div>`).join('')}</div>`;
+}
+function raceList(title, rows, key, waiting) {
+  if (waiting) return `<div class="sect">${esc(title)}</div><div class="card muted">Shown once the Finals start.</div>`;
+  if (!rows?.length) return `<div class="sect">${esc(title)}</div><div class="card muted">Nobody has enough games yet.</div>`;
+  const prev = S.raceMemo;
+  return `<div class="sect">${esc(title)}</div><div class="list">${rows.map((r, i) => {
+    let move = '';
+    if (prev && prev.day !== (S.L.day || 0)) {
+      const was = prev.order[key]?.indexOf(r.pid);
+      if (was == null || was < 0) move = ' <span class="tg">New</span>';
+      else if (was > i) move = ' <span class="tg">↑</span>';
+      else if (was < i) move = ' <span class="tr">↓</span>';
+    }
+    return `<div class="it" data-a="player" data-pid="${r.pid}"><b style="width:22px">${i + 1}</b><div class="grow"><div class="nm">${esc(r.name)}${move}</div><div class="meta">${esc(r.abbr || '')}${r.w != null ? ` · ${r.w}-${r.l}` : ''}${r.line ? ' · ' + esc(r.line) : ''}</div><div class="bar"><i style="width:${Math.min(100, r.share || 0)}%;background:var(--hdr)"></i></div></div><b>${Number(r.share).toFixed(1)}</b></div>`;
+  }).join('')}</div>`;
+}
+function raceBody(race) {
+  const a = race.ballot || {};
+  const html = `<div class="card plain">${esc(race.note || '')}</div>${raceList('MVP race', a.mvp, 'mvp')}${raceList('Defensive Player of the Year', a.dpoy, 'dpoy')}${raceList('Rookie of the Year', a.roy, 'roy')}${raceList('Sixth Man', a.sixth, 'sixth')}${raceList('Most Improved', a.mip, 'mip')}${raceList('Finals MVP', a.fmvp, 'fmvp', !race.finalsOn)}`;
+  S.raceMemo = { day: S.L.day || 0, order: Object.fromEntries(['mvp', 'dpoy', 'roy', 'sixth', 'mip', 'fmvp'].map(k => [k, (a[k] || []).map(r => r.pid)])) };
+  return html;
 }
 function teamLines(label, teams) {
   if (!teams?.some(t => t?.length)) return '';
@@ -1001,7 +1022,9 @@ function awardCard(h) {
 function awardsTab(L) {
   const pow = (L.pow || []).filter(x => x.season === L.season).slice(0, 30);
   const arch = E.leagueArchive(L);
-  return `<div class="card plain">${esc(arch.scope)}</div><div class="sect">Player of the Week · ${seasonLbl(L.season)}</div><div class="list">${pow.map(x => `<div class="it" data-a="player" data-pid="${x.pid}">${disc(x.tid, 30)}<div class="grow"><div class="nm">${esc(x.name)}</div><div class="meta">Week ${x.week} · ${x.conf === 'E' ? 'East' : 'West'}</div></div></div>`).join('') || '<div class="it muted">Awarded weekly during the regular season.</div>'}</div>
+  const stored = (L.history || []).some(h => h.season === L.season && h.awards);
+  const race = stored ? '' : `<div class="sect">Awards race · ${seasonLbl(L.season)}</div>${raceBody(E.awardRace(L))}`;
+  return `<div class="card plain">${esc(arch.scope)}</div>${race}<div class="sect">Player of the Week · ${seasonLbl(L.season)}</div><div class="list">${pow.map(x => `<div class="it" data-a="player" data-pid="${x.pid}">${disc(x.tid, 30)}<div class="grow"><div class="nm">${esc(x.name)}</div><div class="meta">Week ${x.week} · ${x.conf === 'E' ? 'East' : 'West'}</div></div></div>`).join('') || '<div class="it muted">Awarded weekly during the regular season.</div>'}</div>
   ${arch.seasons.slice().reverse().map(h => `<div class="sect">${h.season ? seasonLbl(h.season) : 'Season'} awards</div>${awardCard(h)}`).join('') || '<div class="card muted">No season awards yet.</div>'}`;
 }
 function historyTab(L) {
