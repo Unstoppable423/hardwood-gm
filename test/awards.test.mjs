@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeAwards } from '../src/engine/offseason.js';
-import { setSeed } from '../src/engine/rng.js';
+import { awardRace, computeAwards } from '../src/engine/offseason.js';
+import { getSeed, setSeed } from '../src/engine/rng.js';
 
 const line = (o) => ({ gp: 70, gs: 70, min: 36 * 70, pts: 1400, orb: 70, drb: 280, ast: 280, stl: 70, blk: 40, tov: 140, fga: 1100, fgm: 500, ...o });
 function guy(o) {
@@ -84,7 +84,52 @@ test('Finals MVP is a champion, and the teams keep a real lineup', () => {
 });
 
 test('an older season without a ballot is still a stored awards record', () => {
-  const old = { mvp: { pid: 9, name: 'Old Star', tid: 0, abbr: 'BOS' }, allNBA: [[], [], []] };
-  assert.equal(old.ballot, undefined);
+  const old = { mvp: { pid: 9, name: 'Old Star', tid: 0, abbr: 'BOS' }, ballot: { mvp: [{ pid: 9, name: 'Old Star', share: 70 }, { pid: 8, name: 'Next', share: 30 }] }, allNBA: [[], [], []] };
+  assert.equal(old.ballot.mvp.length, 2);
   assert.equal(old.mvp.name, 'Old Star');
+});
+
+test('the official ballot keeps five finalists when more qualify, and fewer when they do not', () => {
+  const pack = Array.from({ length: 7 }, (_, i) => guy({ pid: i + 1, name: 'P' + i, tid: i % 2, pos: 'SF', ovr: 70 + i, reg: { pts: 1000 + i * 80 } }));
+  const L = league(pack, [40, 25]);
+  setSeed(3);
+  const a = computeAwards(L);
+  assert.equal(a.ballot.mvp.length, 5);
+  assert.equal(a.ballot.mvp[0].pid, a.mvp.pid);
+  assert.equal(sum(a.ballot.mvp), 100);
+  const short = league([pack[0], pack[1]], [40, 25]);
+  setSeed(3);
+  assert.equal(computeAwards(short).ballot.mvp.length, 2);
+});
+
+test('the in-season race uses the same vote once the games bar is official, and does not touch the save', () => {
+  const pack = Array.from({ length: 6 }, (_, i) => guy({ pid: i + 1, name: 'R' + i, tid: i % 2, pos: i % 2 ? 'PF' : 'SG', ovr: 72 + i, reg: { pts: 1100 + i * 90, gs: i === 5 ? 4 : 70 } }));
+  const L = league(pack, [48, 18]);
+  L.phase = 'PLAYOFFS';
+  L.playoffs = { champ: null, runnerUp: null, series: [], round: 3 };
+  const awardsBefore = pack.map(p => p.awards.length);
+  const ovr = pack[0].ovr;
+  setSeed(9);
+  const seed = getSeed();
+  const race = awardRace(L);
+  assert.equal(getSeed(), seed);
+  assert.deepEqual(pack.map(p => p.awards.length), awardsBefore);
+  assert.equal(pack[0].ovr, ovr);
+  assert.equal(race.finalsOn, false);
+  assert.equal(race.ballot.fmvp.length, 0);
+  assert.equal(race.ballot.mvp.length, 5);
+  assert.ok(race.ballot.mvp[0].line.includes('PPG'));
+  setSeed(9);
+  const final = computeAwards(L);
+  assert.deepEqual(race.ballot.mvp.map(r => r.pid), final.ballot.mvp.map(r => r.pid));
+  assert.deepEqual(race.ballot.mvp.map(r => r.share), final.ballot.mvp.map(r => r.share));
+
+  const early = league(pack.map(p => ({ ...p, stats: { ...p.stats, reg: { ...p.stats.reg, gp: 8, min: 8 * 30, gs: p.stats.reg.gs ? 8 : 0 } } })), [6, 2]);
+  early.phase = 'REGULAR';
+  early.playoffs = { champ: null, series: [], round: 0 };
+  const look = awardRace(early);
+  assert.equal(look.early, true);
+  assert.match(look.note, /Early look/);
+  assert.ok(look.ballot.mvp.length >= 1);
+  assert.equal(look.ballot.fmvp.length, 0);
 });

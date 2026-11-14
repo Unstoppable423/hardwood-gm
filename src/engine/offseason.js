@@ -304,10 +304,32 @@ export function offerAcceptable(L, p, tid, amt, years, ask) {
 }
 
 // ================= awards & season review =================
-function seasonLine(p, key = 'reg') { const s = p.stats[key]; const g = s.gp || 1; return { ppg: s.pts / g, rpg: (s.orb + s.drb) / g, apg: s.ast / g, gp: s.gp }; }
-export function computeAwards(L) {
+function seasonLine(p, key = 'reg') { const s = p.stats[key]; const g = s?.gp || 1; return { ppg: (s?.pts || 0) / g, rpg: ((s?.orb || 0) + (s?.drb || 0)) / g, apg: (s?.ast || 0) / g, gp: s?.gp || 0 }; }
+const perG = (s, k) => s?.gp ? (s[k] || 0) / s.gp : 0;
+function statLine(p, kind) {
+  const s = p.stats?.reg;
+  const reb = (((s?.orb || 0) + (s?.drb || 0)) / (s?.gp || 1)).toFixed(1);
+  if (kind === 'dpoy') return `${perG(s, 'stl').toFixed(1)} STL · ${perG(s, 'blk').toFixed(1)} BLK · ${reb} REB`;
+  if (kind === 'fmvp') { const po = p.stats?.po; return `${perG(po, 'pts').toFixed(1)} PPG · ${po?.gp || 0} playoff games`; }
+  if (kind === 'sixth') return `${perG(s, 'pts').toFixed(1)} PPG · ${s?.gs || 0} starts in ${s?.gp || 0} games`;
+  if (kind === 'mip') { const prev = p.career?.at?.(-1)?.ppg; const now = perG(s, 'pts'); return prev != null ? `${now.toFixed(1)} PPG · last year ${Number(prev).toFixed(1)}` : `${now.toFixed(1)} PPG`; }
+  return `${perG(s, 'pts').toFixed(1)} PPG · ${reb} REB · ${perG(s, 'ast').toFixed(1)} AST`;
+}
+// One vote. Awards night and the in-season race both use it, so once the games-played
+// bar is the official one the top five are the same names. The tiny voter shake is
+// drawn only when the award is actually given, and it is not added to the score, so
+// opening the race does not reshuffle the ballot or the rest of the save.
+function awardBoard(L, { live = false } = {}) {
   const rec = standings(L); const wp = Object.fromEntries(rec.map(r => [r.tid, r.pct]));
-  const elig = L.players.filter(p => p.tid >= 0 && p.stats.reg.gp >= gpReq(L, 50));
+  const games = (p) => p.stats?.reg?.gp || 0;
+  const leaderGp = L.players.reduce((m, p) => Math.max(m, games(p)), 0);
+  const full = gpReq(L, 50);
+  const early = live && L.phase === 'REGULAR' && leaderGp < full;
+  const mvpMin = early ? Math.max(5, Math.min(full, Math.round(Math.max(leaderGp, 5) * 0.5))) : full;
+  const royMin = early ? Math.max(3, Math.min(gpReq(L, 30), mvpMin)) : gpReq(L, 30);
+  const dGp = early ? mvpMin : gpReq(L, 55);
+  const dMin = early ? 12 : 27;
+  const elig = L.players.filter(p => p.tid >= 0 && games(p) >= mvpMin && p.stats?.reg);
   // MVP voting: production + how good the player is (OVR) + best player on a top seed + voter fatigue
   const zP = zOf(elig.map(p => prodScore(p))), zO = zOf(elig.map(p => p.ovr));
   const best = {}; for (const p of elig) if (!best[p.tid] || p.ovr > best[p.tid].ovr) best[p.tid] = p;
@@ -315,8 +337,9 @@ export function computeAwards(L) {
   const mvpRun = (p) => { let n = 0; while (p.awards.some(a => a.type === 'MVP' && a.season === L.season - 1 - n)) n++; return n; };
   const mvpCache = new Map();
   const mvpScore = (p) => { if (mvpCache.has(p.pid)) return mvpCache.get(p.pid);
+    if (!live) normal(0, 0.08); // same draw count as before, not part of the vote, so the race and the night agree
     const sr = seedRank[p.tid] ?? 15; const v = 0.55 * zP(prodScore(p)) + 0.6 * zO(p.ovr) + 1.6 * (wp[p.tid] - 0.5) + (sr < 4 ? 0.25 - sr * 0.05 : 0)
-      + (best[p.tid] === p ? 0.2 : -0.35) - (mvpRun(p) >= 2 ? 0.25 * (mvpRun(p) - 1) : 0) + normal(0, 0.08);
+      + (best[p.tid] === p ? 0.2 : -0.35) - (mvpRun(p) >= 2 ? 0.25 * (mvpRun(p) - 1) : 0);
     mvpCache.set(p.pid, v); return v; };
   const by = (fn, arr = elig) => [...arr].sort((a, b) => fn(b) - fn(a));
   const mvpRank = by(mvpScore); const mvp = mvpRank[0];
@@ -324,17 +347,18 @@ export function computeAwards(L) {
   // Team defense = points allowed relative to the scoring environment of its own games (so fast-paced schemes aren't punished).
   const stT = standings(L); const lgPts = stT.reduce((s, r) => s + r.pf, 0) / Math.max(1, stT.reduce((s, r) => s + r.w + r.l, 0));
   const tDef = stT.map(r => { const g = Math.max(1, r.w + r.l); return r.pa / g - ((r.pf + r.pa) / (2 * g) - lgPts) * 0.6; });
-  const zT = zOf(tDef); const dEl = elig.filter(p => p.stats.reg.gp >= gpReq(L, 55) && p.stats.reg.min / p.stats.reg.gp >= 27);
+  const zT = zOf(tDef); const dEl = elig.filter(p => p.stats.reg.gp >= dGp && p.stats.reg.min / p.stats.reg.gp >= dMin);
   const per = (p, k) => p.stats.reg[k] / p.stats.reg.gp;
   const zB = zOf(dEl.map(p => per(p, 'blk'))), zS = zOf(dEl.map(p => per(p, 'stl'))), zD = zOf(dEl.map(p => per(p, 'drb')));
   const dScore = new Map(dEl.map((p, i) => { const b = zB(per(p, 'blk')), st = zS(per(p, 'stl')), d = zD(per(p, 'drb'));
     const run = (() => { let n = 0; while (p.awards.some(a => a.type === 'Defensive Player of the Year' && a.season === L.season - 1 - n)) n++; return n; })();
     const cb = Math.min(b, 2.6), cs = Math.min(st, 2.6); // diminishing returns: a 4.5-block specialist isn't automatically DPOY
     const impact = Math.max(cb, cs * 0.9) + 0.3 * Math.max(0, Math.min(cb, cs)) + 0.2 * d + 0.05 * (p.ovr - 75);
-    return [p.pid, impact + 0.5 * -zT(tDef[p.tid]) + 0.004 * ((p.ratings.idef + p.ratings.pdef) - 150) + normal(0, 0.12) - (run >= 2 ? 0.3 * (run - 1) : 0)]; }));
-  const dpoyList = by(p => dScore.get(p.pid), dEl.length ? dEl : elig);
+    if (!live) normal(0, 0.12);
+    return [p.pid, impact + 0.5 * -zT(tDef[p.tid]) + 0.004 * (((p.ratings?.idef || 0) + (p.ratings?.pdef || 0)) - 150) - (run >= 2 ? 0.3 * (run - 1) : 0)]; }));
+  const dpoyList = dEl.length ? by(p => dScore.get(p.pid), dEl) : (live ? [] : by(p => dScore.get(p.pid), elig));
   const dpoy = dpoyList[0]; if (globalThis.process?.env?.DPOYDIAG) console.log(L.season, dpoyList.slice(0, 5).map(p => { const s = p.stats.reg; return `${p.name} ${L.teams[p.tid].abbr} b${(s.blk / s.gp).toFixed(1)} s${(s.stl / s.gp).toFixed(1)} tDefRank${[...tDef].sort((a, b) => a - b).indexOf(tDef[p.tid]) + 1} sc${dScore.get(p.pid)?.toFixed(2)}`; }).join(' | '));
-  const rookies = L.players.filter(p => p.tid >= 0 && p.career.length === 0 && (p.draft?.year === L.season - 1) && p.stats.reg.gp >= gpReq(L, 30));
+  const rookies = L.players.filter(p => p.tid >= 0 && p.career.length === 0 && (p.draft?.year === L.season - 1) && games(p) >= royMin && p.stats?.reg);
   const royRank = by(prodScore, rookies); const roy = royRank[0];
   const sixthPool = elig.filter(p => p.stats.reg.gs < p.stats.reg.gp * 0.4);
   const sixthRank = by(prodScore, sixthPool); const sixth = sixthRank[0];
@@ -346,13 +370,20 @@ export function computeAwards(L) {
   const grp = (p) => p.pos === 'PG' || p.pos === 'SG' ? 'G' : p.pos === 'C' ? 'C' : 'F';
   const used = new Set();
   for (let t = 0; t < 3; t++) for (const g of ['G', 'F', 'C']) { let n = slots[g]; for (const p of ranked) { if (n <= 0) break; if (!used.has(p) && grp(p) === g) { allNBA[t].push(p); used.add(p); n--; } } }
-  const champ = L.playoffs.champ;
-  const fmvpScore = (p) => prodScore(p, 'po') * (p.stats.po.gp >= 4 ? 1 : 0.5);
-  const fmvpRank = by(fmvpScore, L.players.filter(p => p.tid === champ && p.stats.po.gp > 0)); const fmvp = fmvpRank[0];
+  const champ = L.playoffs?.champ ?? null;
+  const finalsSeries = (L.playoffs?.series || []).filter(s => s.round === 4);
+  const finalsOn = champ != null || L.playoffs?.round >= 4 || finalsSeries.length > 0;
+  const fmvpScore = (p) => prodScore(p, 'po') * ((p.stats?.po?.gp || 0) >= 4 ? 1 : 0.5);
+  const fmvpPool = champ != null
+    ? L.players.filter(p => p.tid === champ && p.stats?.po?.gp > 0)
+    : (live && finalsOn ? L.players.filter(p => finalsSeries.some(s => s.hi === p.tid || s.lo === p.tid) && p.stats?.po?.gp > 0) : []);
+  const fmvpRank = by(fmvpScore, fmvpPool); const fmvp = fmvpRank[0];
   const A = { mvp, dpoy, roy, sixth, mip, fmvp, allNBA };
-  const give = (p, type) => { if (p) p.awards.push({ season: L.season, type }); };
-  give(mvp, 'MVP'); give(dpoy, 'Defensive Player of the Year'); give(roy, 'Rookie of the Year'); give(sixth, 'Sixth Man of the Year'); give(mip, 'Most Improved Player'); give(fmvp, 'Finals MVP');
-  allNBA.forEach((team, i) => team.forEach(p => give(p, `All-NBA ${['1st', '2nd', '3rd'][i]} Team`)));
+  if (!live) {
+    const give = (p, type) => { if (p) p.awards.push({ season: L.season, type }); };
+    give(mvp, 'MVP'); give(dpoy, 'Defensive Player of the Year'); give(roy, 'Rookie of the Year'); give(sixth, 'Sixth Man of the Year'); give(mip, 'Most Improved Player'); give(fmvp, 'Finals MVP');
+    allNBA.forEach((team, i) => team.forEach(p => give(p, `All-NBA ${['1st', '2nd', '3rd'][i]} Team`)));
+  }
   const fillTeams = (ranked, teams) => {
     const used = new Set(); const slots = { G: 2, F: 2, C: 1 };
     const out = Array.from({ length: teams }, () => []);
@@ -364,12 +395,16 @@ export function computeAwards(L) {
   };
   const allDefense = fillTeams(dpoyList, 2);
   const allRookie = [royRank.slice(0, 5), royRank.slice(5, 10)];
-  allDefense.forEach((team, i) => team.forEach(p => give(p, `All-Defensive ${['1st', '2nd'][i]} Team`)));
-  allRookie.forEach((team, i) => team.forEach(p => give(p, `All-Rookie ${['1st', '2nd'][i]} Team`)));
-  for (const p of L.players.filter(p => p.tid === champ)) p.awards.push({ season: L.season, type: 'Champion' });
-  const name = (p) => p ? { pid: p.pid, name: p.name, tid: p.tid, abbr: L.teams[p.tid].abbr } : null;
+  if (!live) {
+    const give = (p, type) => { if (p) p.awards.push({ season: L.season, type }); };
+    allDefense.forEach((team, i) => team.forEach(p => give(p, `All-Defensive ${['1st', '2nd'][i]} Team`)));
+    allRookie.forEach((team, i) => team.forEach(p => give(p, `All-Rookie ${['1st', '2nd'][i]} Team`)));
+    for (const p of L.players.filter(p => p.tid === champ)) p.awards.push({ season: L.season, type: 'Champion' });
+  }
+  const mark = (tid) => rec.find(r => r.tid === tid);
+  const name = (p, kind) => !p || p.tid == null || !L.teams[p.tid] ? null : { pid: p.pid, name: p.name, tid: p.tid, abbr: L.teams[p.tid].abbr, line: statLine(p, kind), w: mark(p.tid)?.w ?? null, l: mark(p.tid)?.l ?? null };
   // Shares use the scores already computed. No extra random draw, so the winner does not change.
-  const voteShare = (ranked, scoreOf, n = 5) => {
+  const voteShare = (ranked, scoreOf, kind, n = 5) => {
     const top = ranked.filter(Boolean).slice(0, n);
     if (!top.length) return [];
     const s = top.map(scoreOf);
@@ -379,18 +414,24 @@ export function computeAwards(L) {
     const pts = w.map(v => Math.floor(v / sum * 1000));
     let rem = 1000 - pts.reduce((a, b) => a + b, 0);
     for (let i = 0; rem > 0; i++) { pts[i % pts.length]++; rem--; }
-    return top.map((p, i) => ({ ...name(p), share: pts[i] / 10 }));
+    return top.map((p, i) => ({ ...name(p, kind), share: pts[i] / 10 }));
   };
   const ballot = {
-    mvp: voteShare(mvpRank, mvpScore),
-    dpoy: voteShare(dpoyList, p => dScore.get(p.pid) || 0),
-    roy: voteShare(royRank, prodScore),
-    sixth: voteShare(sixthRank, prodScore),
-    mip: voteShare(mipRank, mipScore),
-    fmvp: voteShare(fmvpRank, fmvpScore),
+    mvp: voteShare(mvpRank, mvpScore, 'mvp'),
+    dpoy: voteShare(dpoyList, p => dScore.get(p.pid) || 0, 'dpoy'),
+    roy: voteShare(royRank, prodScore, 'roy'),
+    sixth: voteShare(sixthRank, prodScore, 'sixth'),
+    mip: voteShare(mipRank, mipScore, 'mip'),
+    fmvp: live && !finalsOn ? [] : voteShare(fmvpRank, fmvpScore, 'fmvp'),
   };
-  return { mvp: name(mvp), dpoy: name(dpoy), roy: name(roy), sixth: name(sixth), mip: name(mip), fmvp: name(fmvp), allNBA: allNBA.map(t => t.map(name)), allDefense: allDefense.map(t => t.map(name)), allRookie: allRookie.map(t => t.map(name)), ballot };
+  const note = early
+    ? `Early look. The leader has played ${leaderGp} games, and the official ballot waits for about ${full}. This is the same vote as awards night, so the list will move as the season goes.`
+    : (live ? 'Same vote as awards night. These top five are the finalists once the season is complete.' : '');
+  return { mvp: name(mvp, 'mvp'), dpoy: name(dpoy, 'dpoy'), roy: name(roy, 'roy'), sixth: name(sixth, 'sixth'), mip: name(mip, 'mip'), fmvp: ballot.fmvp.length ? name(fmvp, 'fmvp') : null, allNBA: allNBA.map(t => t.map(p => name(p, 'mvp'))), allDefense: allDefense.map(t => t.map(p => name(p, 'dpoy'))), allRookie: allRookie.map(t => t.map(p => name(p, 'roy'))), ballot, early, note, finalsOn, day: L.day || 0, leaderGp };
 }
+export function computeAwards(L) { return awardBoard(L, { live: false }); }
+// In-season race. Read only: it does not write the save or draw a random number.
+export function awardRace(L) { return awardBoard(L, { live: true }); }
 export function enterAwards(L) {
   L.phase = 'AWARDS';
   const rec = standings(L); const P = L.playoffs;
