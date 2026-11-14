@@ -14,6 +14,29 @@ const INJ = [
 ];
 export let USE = (r, p) => Math.pow(r.sco / 60, 0.85) * Math.pow(p.ovr / 65, 0.55);
 export const setUse = (f) => { USE = f; };
+function shapedUse(r, p) {
+  const base = USE(r, p);
+  const u = p.shape?.usg;
+  if (u == null) return base;
+  return Math.pow(base, 0.7) * Math.pow(Math.max(0.35, u / 0.2), 0.3);
+}
+function rebSkill(r, p) {
+  const s = p.shape;
+  if (s?.drb == null) return r.reb;
+  return 18 + 240 * ((s.orb || 0) + s.drb);
+}
+function astWeight(r, p) {
+  const s = p.shape;
+  if (s?.astp == null) return Math.pow(r.pas / 60, 3.5) * (AST_ROLE[p.pos] ?? 0.5);
+  return Math.pow(Math.max(0.04, s.astp) / 0.15, 1.25);
+}
+function threeWeight(r, p, ht) {
+  const gap = clamp((r.out - 55) / 28, 0, 1.7);
+  let w = ERA.three * (1.75 + 0.22 * gap) * Math.exp(-1.15 * Math.max(0, ht - 0.15));
+  const s = p.shape;
+  if (s && s.astp < 0.2 && s.usg >= 0.16 && r.out >= 72 && ht < 0.85) w *= 2.4;
+  return w;
+}
 function composites(p) {
   const r = p.ratings, ht = (p.h / 2.54 - 79) / 3;
   return {
@@ -21,11 +44,13 @@ function composites(p) {
     rim: r.ins * 0.65 + r.ath * 0.2 + r.sco * 0.15,
     mid: r.out * 0.55 + r.sco * 0.3 + r.iq * 0.15,
     tre: r.out * 0.9 + r.iq * 0.1,
-    use: USE(r, p),
+    use: shapedUse(r, p),
     wRim: Math.exp((r.ins - r.out) / 18 + ht * 0.25), wMid: 0.85,
-    w3: ERA.three * Math.exp((r.out - 62) / 12) * Math.exp(-1.1 * Math.max(0, ht - 0.3)),
+    // out=99 used to explode into a three-point specialist. Keep the era rate, and only
+    // bump players whose real profile is a low-assist scorer (Miller, Rice), not Jordan.
+    w3: threeWeight(r, p, ht),
     ft: clamp(0.39 + r.out * 0.0052 + r.iq * 0.0006 - Math.max(0, ht) * 0.045, 0.4, 0.92),
-    han: r.han, pas: r.pas, reb: r.reb, idef: r.idef, pdef: r.pdef, iq: r.iq, h: p.h, dur: r.dur, blk: r.blk ?? r.idef - 10, stl: r.stl ?? r.pdef - 8,
+    han: r.han, pas: r.pas, reb: rebSkill(r, p), astW: astWeight(r, p), idef: r.idef, pdef: r.pdef, iq: r.iq, h: p.h, dur: r.dur, blk: r.blk ?? r.idef - 10, stl: r.stl ?? r.pdef - 8,
     big: p.pos === 'PF' || p.pos === 'C', guard: p.pos === 'PG' || p.pos === 'SG',
   };
 }
@@ -229,7 +254,7 @@ export function simGame(home, away, opts = {}) {
   function maybeAssist(tm, sh, type) {
     if (rand() < Math.min(0.95, (type === 1 ? 0.6 : type === 2 ? 0.66 : 0.88) * tm.ox.ast)) {
       const mates = tm.on.filter(c => c !== sh); if (!mates.length) return null;
-      const a = weighted(mates, c => Math.pow(c.pas / 60, 3.5) * (AST_ROLE[c.pos] ?? 0.5)); tm.line[a.pid].ast++; return a;
+      const a = weighted(mates, c => c.astW ?? Math.pow(c.pas / 60, 3.5) * (AST_ROLE[c.pos] ?? 0.5)); tm.line[a.pid].ast++; return a;
     }
     return null;
   }

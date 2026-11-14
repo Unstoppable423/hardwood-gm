@@ -151,6 +151,8 @@ export function playerFromStats(raw, season) {
   if (raw.prev && raw.gp >= 30) { const wp = 0.3 * Math.min(1, raw.prev.gp / 60), wc = 1 - wp;
     cur = { ...alt, pts: wc * alt.pts + wp * raw.prev.pts, reb: wc * alt.reb + wp * raw.prev.reb, ast: wc * alt.ast + wp * raw.prev.ast }; }
   p._prod = productionIndex(cur); p._tilt = tilt; p._raw = raw;
+  // Real per-game shape for the sim (usage, assist rate, rebound rate). Ratings stay as they are.
+  if (raw.usg != null && raw.astp != null) p.shape = { usg: +raw.usg, astp: +raw.astp, orb: raw.orb ?? 0.05, drb: raw.drb ?? 0.12 };
   p.ratings.sco = clamp(Math.round(55 + 10 * zu + 5 * zp), 25, 99);
   p.ratings.sta = clamp(Math.round(68 + (raw.gp - 55) / 3 + (27 - raw.age) * 0.6), 40, 99);
   p.ratings.dur = clamp(Math.round(55 + raw.gp / 2.4 + normal(0, 6)), 30, 99);
