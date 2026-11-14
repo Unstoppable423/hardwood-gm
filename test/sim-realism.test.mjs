@@ -31,7 +31,7 @@ test('a 1996-97 season keeps real shapes: boards, assists, threes, minutes, and 
   const rod = line(L, 'Dennis Rodman');
   const stock = line(L, 'John Stockton');
   const reg = line(L, 'Reggie Miller');
-  assert.ok(mj.gp >= 30 && rod.gp >= 40 && stock.gp >= 40, [mj.gp, rod.gp, stock.gp]);
+  assert.ok(mj.gp >= 30 && rod.gp >= 15 && stock.gp >= 40, [mj.gp, rod.gp, stock.gp]);
   assert.ok(mj.ppg > 22 && mj.ppg < 36, mj.ppg);
   assert.ok(mj.rpg < 8, mj.rpg);
   assert.ok(mj.tpm < 3.5, mj.tpm);

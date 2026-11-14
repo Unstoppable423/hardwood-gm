@@ -1,12 +1,56 @@
 import { rand, randInt, normal, pick, clamp } from './rng.js';
 import { capFor, minSalary, maxSalary } from './constants.js';
 import { NAME_DATA } from './names.js';
+import { rawFor } from './histstart.js';
 
 export const ATTRS = ['ins', 'out', 'pas', 'han', 'reb', 'idef', 'pdef', 'ath', 'iq'];
 export const ATTR_LABEL = { ins: 'Inside Scoring', out: 'Outside Shooting', pas: 'Passing', han: 'Ball Handling',
   reb: 'Rebounding', idef: 'Interior Defense', pdef: 'Perimeter Defense', ath: 'Athleticism', iq: 'Basketball IQ',
   sco: 'Shot Creation', sta: 'Stamina', dur: 'Durability', blk: 'Shot Blocking', stl: 'Steals' };
 // Derived defensive event skills for players without data (prospects, old saves).
+const shapeName = (s) => String(s || '').normalize('NFKD').replace(/[^a-z0-9]/gi, '').toLowerCase();
+// The sim's shot, rebound, and assist mix. Built from a real season line. Ratings are not part of it.
+export function shapeFromRaw(raw) {
+  if (!raw || raw.usg == null || raw.astp == null) return null;
+  const shape = { usg: +raw.usg, astp: +raw.astp, orb: raw.orb ?? 0.05, drb: raw.drb ?? 0.12 };
+  if (raw.reb != null && raw.reb !== '') shape.rpg = +raw.reb;
+  return shape;
+}
+function shapeSeason(hp, L) {
+  const years = Object.keys(hp.s || {}).map(Number).filter(y => y > 1900).sort((a, b) => a - b);
+  if (!years.length) return null;
+  const target = L?.histStart || L?.season || years.at(-1);
+  const prior = years.filter(y => y <= target);
+  return prior.length ? prior.at(-1) : years[0];
+}
+// Existing saves predate the profile. Add it when a real line matches this player. Leave every other field alone.
+export function ensureShapes(L, data) {
+  if (!L?.players) return 0;
+  const startBy = new Map();
+  for (const raw of data?.start?.players || []) startBy.set(shapeName(raw.n), raw);
+  const hist = data?.history?.players || L.data?.history?.players || [];
+  const byKey = new Map(), byName = new Map();
+  for (const hp of hist) {
+    if (hp.k) byKey.set(hp.k, hp);
+    const k = shapeName(hp.n);
+    if (k && !byName.has(k)) byName.set(k, hp);
+  }
+  const historic = L.histStart && L.histStart < 1997;
+  let n = 0;
+  for (const p of L.players) {
+    if (p.shape?.usg != null && p.shape.astp != null && p.shape.drb != null) continue;
+    let raw = null;
+    const hp = (p.arcKey && byKey.get(p.arcKey)) || (p.histKey && byKey.get(p.histKey)) || byName.get(shapeName(p.name));
+    if (historic && hp) raw = rawFor(hp, shapeSeason(hp, L));
+    if (!raw && !historic) raw = startBy.get(shapeName(p.name));
+    if (!raw && hp) raw = rawFor(hp, shapeSeason(hp, L));
+    const shape = shapeFromRaw(raw);
+    if (!shape) continue;
+    p.shape = shape;
+    n++;
+  }
+  return n;
+}
 export function deriveDefSkills(p) { const r = p.ratings, ht = (p.h / 2.54 - 79) / 3;
   // specialists: shot blocking is mostly size + interior defense, steals mostly hands/feet on the perimeter, both with wide spread
   if (r.blk == null) r.blk = clamp(Math.round(36 + (r.idef - 50) * 0.45 + ht * 13 + normal(0, 9)), 20, 95);
@@ -152,7 +196,7 @@ export function playerFromStats(raw, season) {
     cur = { ...alt, pts: wc * alt.pts + wp * raw.prev.pts, reb: wc * alt.reb + wp * raw.prev.reb, ast: wc * alt.ast + wp * raw.prev.ast }; }
   p._prod = productionIndex(cur); p._tilt = tilt; p._raw = raw;
   // Real per-game shape for the sim (usage, assist rate, rebound rate). Ratings stay as they are.
-  if (raw.usg != null && raw.astp != null) p.shape = { usg: +raw.usg, astp: +raw.astp, orb: raw.orb ?? 0.05, drb: raw.drb ?? 0.12 };
+  const shape = shapeFromRaw(raw); if (shape) p.shape = shape;
   p.ratings.sco = clamp(Math.round(55 + 10 * zu + 5 * zp), 25, 99);
   p.ratings.sta = clamp(Math.round(68 + (raw.gp - 55) / 3 + (27 - raw.age) * 0.6), 40, 99);
   p.ratings.dur = clamp(Math.round(55 + raw.gp / 2.4 + normal(0, 6)), 30, 99);

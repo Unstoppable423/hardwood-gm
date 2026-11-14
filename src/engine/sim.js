@@ -23,7 +23,14 @@ function shapedUse(r, p) {
 function rebSkill(r, p) {
   const s = p.shape;
   if (s?.drb == null) return r.reb;
-  return 18 + 240 * ((s.orb || 0) + s.drb);
+  // Rate separates Rodman from a wing. Real rebounds per game lift a guard like Iverson,
+  // whose box total is higher than his rebound rate alone.
+  const rate = 18 + 200 * ((s.orb || 0) + s.drb);
+  const raw = rate + (s.rpg != null ? 14 * s.rpg : 0);
+  // Compress the spread so a guard who actually grabs 4 a game is not stuck at 2.
+  // A true glass-cleaner rate (Rodman) still gets an extra share.
+  const glass = (s.drb || 0) >= 0.22 ? 36 : 0;
+  return 55 + raw * 0.35 + glass;
 }
 function astWeight(r, p) {
   const s = p.shape;
@@ -32,9 +39,9 @@ function astWeight(r, p) {
 }
 function threeWeight(r, p, ht) {
   const gap = clamp((r.out - 55) / 28, 0, 1.7);
-  let w = ERA.three * (1.75 + 0.22 * gap) * Math.exp(-1.15 * Math.max(0, ht - 0.15));
+  let w = ERA.three * (2.35 + 0.12 * gap) * Math.exp(-1.15 * Math.max(0, ht - 0.15));
   const s = p.shape;
-  if (s && s.astp < 0.2 && s.usg >= 0.16 && r.out >= 72 && ht < 0.85) w *= 2.4;
+  if (s && s.astp < 0.2 && s.usg >= 0.16 && r.out >= 72 && ht < 0.85) w *= 2.8;
   return w;
 }
 function composites(p) {
@@ -59,7 +66,7 @@ function emptyLine() { return { min: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, 
 // team-level hot/cold night (shooting form) so lopsided matchups aren't near-certain; tuned with scripts/realism.mjs
 export let FORM_SD = 0.04; export function setFormSd(v) { FORM_SD = v; }
 // how strongly rating gaps move shot/turnover odds (1 = original); <1 compresses records without inflating score variance
-export let TALENT = 0.65; export function setTalent(v) { TALENT = v; }
+export let TALENT = 0.42; export function setTalent(v) { TALENT = v; }
 const LINEUP_CACHE = new Map(); const RS_BONUS = 9; // real starter, still on his real team: wins within ~5 display OVR (internal scale is wider)
 export function autoRotation(players) {
   // starters: best at each slot-ish; minutes by OVR rank
