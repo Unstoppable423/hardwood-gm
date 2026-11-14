@@ -10,7 +10,7 @@ import { ensureSettings, applyRules, deadlineDay, simEdge, seriesLen } from './f
 import { TEAMS, capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, DIFFICULTY, PHASE_LABEL } from './constants.js';
 import { careerMode, arcPot, applyPeakNow, calibrateRealProspect } from './careers.js';
 import { START_FUTURE, histPotFromPeak, attrTops, playerFromStats, finalizeStartRatings, prospectFromReal, generateProspect, generateVeteran, devTrait, marketValue,
-  setNextPid, getNextPid, POS_OVERRIDE, REAL_STARTERS, POS_ELIG, eligiblePos, genName, ovrFromAttrs, capFictional, floorReal } from './players.js';
+  setNextPid, getNextPid, POS_OVERRIDE, REAL_STARTERS, POS_ELIG, eligiblePos, genName, ovrFromAttrs, capFictional, floorReal, ensureShapes } from './players.js';
 import { simGame, autoRotation } from './sim.js';
 import { recordSaveGame, franchiseIdOfTeam } from './leaders.js';
 import { startPreseason, cpuUpgrade, addStashedReal } from './offseason.js';
@@ -48,6 +48,7 @@ export function repairSave(L) {
   for (const t of L.teams) { const r = t.rotation; if (!r) continue; const ids = new Set(L.players.filter(p => p.tid === t.tid).map(p => p.pid));
     if (!r.starters?.every(id => ids.has(id)) || new Set(r.starters).size !== r.starters.length || Object.keys(r.minutes || {}).some(id => !ids.has(+id))) clearLineup(t); }
   markRealStarters(L);
+  ensureShapes(L);
   reindex(L); return fixed;
 }
 // Jersey numbers: real 1996-97 numbers from the data; anyone joining a team (draft, FA, trade) keeps his old number

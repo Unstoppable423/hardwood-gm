@@ -118,7 +118,7 @@ async function loadData() {
 }
 function attach(L) {
   L.dcGlobal = dcGlobal();
-  E.repairSave(L); E.setSeed(L.rng || L.seed); S.L = L;
+  E.repairSave(L); E.ensureShapes(L, DATA); E.setSeed(L.rng || L.seed); S.L = L;
   if (!L.data && DATA) L.data = { classes: DATA.classes.classes || {}, udfa: DATA.classes.udfa || {} };
   E.ensureSettings(L);
   if (!L.settings.gmFiring && L.gm.fired) { L.gm.fired = false; L.gm.jobSecurity = Math.max(L.gm.jobSecurity, 10); } // v41: firing off -> un-fire
