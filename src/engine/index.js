@@ -25,3 +25,4 @@ export * from './draftclass.js';
 export * from './chronicle.js';
 export * from './leaders.js';
 export * from './desk.js';
+export * from './bracket.js';

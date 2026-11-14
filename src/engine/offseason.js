@@ -11,6 +11,7 @@ import { capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, LOTTERY_WEIGHTS, 
 import { marketValue, progress, anchorRatings, attrTops, anchorAttrTails, longevity, devTrait, capFictional, floorReal, generateVeteran, generateProspect, prospectFromReal, dispRating, ovrFromAttrs, eligiblePos } from './players.js';
 import { HOOKS, teamPlayers, getP, reindex, payroll, cap, msg, msgBatch, news, diff, teamName, teamOvr, standings, confSeeds, makeSchedule, clearLineup,
   startPlayoffs, seasonDone, resetSeasonStats, prodScore, createDraftClass, addPicksForSeason, ensureFuturePicks, genStaff, staffEffects, draftControls, logTx } from './league.js';
+import { archiveBracket } from './bracket.js';
 
 // ================= phase machine =================
 export function advance(L) {
@@ -369,7 +370,7 @@ export function enterAwards(L) {
     const sr = L.records.season[st]; if (top && (!sr || v(top) > sr.v)) L.records.season[st] = { v: +v(top).toFixed(1), name: top.name, pid: top.pid, season: L.season };
   }
   L.history.push({ season: L.season, champ: P.champ, runnerUp: P.runnerUp, awards, leaders,
-    user: { tid: L.userTid, w: ur.w, l: ur.l, madePO, roundsWon }, best: rec.slice().sort((a, b) => b.pct - a.pct)[0].tid });
+    user: { tid: L.userTid, w: ur.w, l: ur.l, madePO, roundsWon }, best: rec.slice().sort((a, b) => b.pct - a.pct)[0].tid, bracket: archiveBracket(L) });
   news(L, `🏆 The ${teamName(L, P.champ)} are ${L.season} champions! Finals MVP: ${awards.fmvp?.name ?? '—'}.`, 'award');
   news(L, `MVP: ${awards.mvp?.name} · DPOY: ${awards.dpoy?.name} · ROY: ${awards.roy?.name ?? '—'} · 6MOY: ${awards.sixth?.name} · MIP: ${awards.mip?.name ?? '—'}`, 'award');
   // owner review
