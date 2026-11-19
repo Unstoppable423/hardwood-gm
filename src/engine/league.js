@@ -10,7 +10,7 @@ import { ensureSettings, applyRules, deadlineDay, simEdge, seriesLen } from './f
 import { TEAMS, capFor, minSalary, maxSalary, ROSTER_MAX, ROSTER_MIN, DIFFICULTY, PHASE_LABEL } from './constants.js';
 import { careerMode, arcPot, applyPeakNow, calibrateRealProspect } from './careers.js';
 import { START_FUTURE, histPotFromPeak, attrTops, playerFromStats, finalizeStartRatings, prospectFromReal, generateProspect, generateVeteran, devTrait, marketValue,
-  setNextPid, getNextPid, POS_OVERRIDE, REAL_STARTERS, POS_ELIG, eligiblePos, genName, ovrFromAttrs, capFictional, floorReal, ensureShapes } from './players.js';
+  setNextPid, getNextPid, POS_OVERRIDE, REAL_STARTERS, POS_ELIG, eligiblePos, genName, ovrFromAttrs, capFictional, floorReal, ensureShapes, rawFromSeason, overlayRaw, seasonIndex } from './players.js';
 import { simGame, autoRotation } from './sim.js';
 import { recordSaveGame, franchiseIdOfTeam } from './leaders.js';
 import { startPreseason, cpuUpgrade, addStashedReal } from './offseason.js';
@@ -156,33 +156,41 @@ export function resetSeasonStats(p, season) { p.stats = { season, tid: p.tid, re
 export function newLeague(data, opts = {}) {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   setSeed(seed); setNextPid(1);
-  // historic start (1946-47 .. 1995-96) from data/history.json; otherwise the original 1996-97 start
+  // historic start (1946-47 .. 1995-96) from data/history.json; 1997-98 .. 2025-26 from data/seasons;
+  // 1996-97 stays on data/start1996.json. A season file, when present, overlays real per-game lines.
+  const pack = data.season && data.season.y === opts.startYear ? data.season : null;
+  const modern = !!(opts.startYear > 1997 && pack);
   const H = opts.startYear && opts.startYear < 1997 && data.history ? data.history : null;
-  const season = H ? Math.max(HIST_MIN, opts.startYear) : 1997;
+  const season = (H || modern) ? Math.max(HIST_MIN, opts.startYear) : 1997;
   const L = { version: VERSION, seed, rng: 0, season, phase: 'PRESEASON', day: 0, msgId: 1,
     settings: { realHistory: opts.realHistory ?? true, difficulty: opts.difficulty || 'Medium', histTendency: opts.histTendency ?? 0.5, draftClasses: opts.draftClasses || 'real',
       injuries: opts.injuries ?? 1, scoutAccuracy: opts.scoutAccuracy ?? 'Normal', devVisibility: opts.devVisibility || 'All',
       hideRookieRatings: opts.hideRookieRatings ?? false, playerCap: opts.playerCap ?? true, staffCap: opts.staffCap ?? false, cpuTrades: opts.cpuTrades ?? true, dark: false },
     userTid: opts.userTid ?? 12,
     gm: { name: opts.gmName || 'You', archetype: opts.archetype || 'Scout', legacy: 0, jobSecurity: 60, seasonsRun: 0, titles: 0, fired: false, history: [] },
-    teams: (H ? histTeams(season).map((t, tid) => ({ ...t, tid })) : TEAMS).map(t => ({ ...t, retiredNums: (H ? [] : RETIRED_1996[t[0]] || RETIRED_1996[t.abbr] || []).map(([num, name]) => ({ num, name, season: null, real: true })), rotation: null, autoRotation: true, strategy: { pace: 'Normal', focus: 'Balanced' }, staff: {}, mleUsed: false, lastWinPct: 0.5 })),
+    teams: ((H || modern) ? histTeams(season).map((t, tid) => ({ ...t, tid })) : TEAMS).map(t => ({ ...t, retiredNums: ((H || modern) ? [] : RETIRED_1996[t[0]] || RETIRED_1996[t.abbr] || []).map(([num, name]) => ({ num, name, season: null, real: true })), rotation: null, autoRotation: true, strategy: { pace: 'Normal', focus: 'Balanced' }, staff: {}, mleUsed: false, lastWinPct: 0.5 })),
     players: [], schedule: [], games: {}, playoffs: null, picks: [], draft: null, lottery: null, fa: { offers: {} },
     history: [], hof: [], records: { game: {}, season: {} }, inbox: [], news: [], deadMoney: [], staffPool: [], transactions: [], expectation: null,
     data: { classes: data.classes?.classes || {}, udfa: data.classes?.udfa || {}, careers: data.classes?.careers || {} } };
-  if (H) { L.histStart = season; L.data.history = H; }
+  if (H || modern) { L.histStart = season; if (H) L.data.history = H; }
   if (!L.teams[L.userTid]) L.userTid = 0; // smaller historic leagues
   Object.assign(L.settings, opts.franchise || {}); ensureSettings(L); applyEraRules(L);
-  const abbrIdx = Object.fromEntries(L.teams.map(t => [H ? t.fid : t.abbr, t.tid]));
-  const startRows = H ? H.players.map(hp => rawFor(hp, season)).filter(Boolean) : data.start.players;
+  const abbrIdx = Object.fromEntries(L.teams.map(t => [(H || modern) ? t.fid : t.abbr, t.tid]));
+  const packIdx = seasonIndex(pack);
+  let startRows = H ? H.players.map(hp => rawFor(hp, season)).filter(Boolean) : modern ? pack.rows.map(rawFromSeason) : data.start.players;
+  if (pack && !modern) startRows = startRows.map(raw => overlayRaw(raw, pack, packIdx));
   const hpBy = H ? Object.fromEntries(H.players.map(hp => [hp.k, hp])) : {};
   for (const raw of startRows) {
     const p = playerFromStats(raw, season); p.tid = abbrIdx[raw.t] ?? -1;
-    if (H) { p._prod += raw._boost || 0; p.histKey = raw._key; p.arcKey = raw._key; p.real = true; if (raw._est) p.estSeason = raw._est; } if (raw.num != null) { p.num = String(raw.num); p.numTid = p.tid; if (p.tid >= 0) p.numHist = { [p.tid]: p.num }; } if (p.tid >= 0) p.startTid = p.tid; p._r96 = { pts: raw.pts, reb: raw.reb, ast: raw.ast }; L.players.push(p);
+    if (H) { p._prod += raw._boost || 0; p.histKey = raw._key; p.arcKey = raw._key; p.real = true; if (raw._est) p.estSeason = raw._est; }
+    if (modern) p.real = true;
+    if (raw.num != null) { p.num = String(raw.num); p.numTid = p.tid; if (p.tid >= 0) p.numHist = { [p.tid]: p.num }; } if (p.tid >= 0) p.startTid = p.tid; p._r96 = { pts: raw.pts, reb: raw.reb, ast: raw.ast }; L.players.push(p);
   }
-  finalizeStartRatings(L.players, H ? H.teamWins?.[String(season)] : data.start.teamWins);
+  finalizeStartRatings(L.players, pack?.wins || (H ? H.teamWins?.[String(season)] : data.start.teamWins));
   // real-career tendency for young 1996 players: future stars head toward stardom, the rest stay grounded
   const hT = careerMode(L) === 'random' ? (L.settings.histTendency || 0) : 0;
-  if (careerMode(L) !== 'random') for (const p of L.players) applyPeakNow(L, p, season - 1);
+  // 1996-97 keeps the career-peak lift. Other start years are ranked by that season's production.
+  if (careerMode(L) !== 'random' && !H && !modern) for (const p of L.players) applyPeakNow(L, p, season - 1);
   if (careerMode(L) !== 'random') for (const p of L.players) { const ap = arcPot(L, p, season); if (ap != null) p.pot = Math.max(p.ovr, Math.round(0.85 * ap + 0.15 * p.pot)); }
   if (hT > 0 && !H) for (const p of L.players) if (p.age <= 25) {
     const fp = START_FUTURE[p.name]; const hp = fp != null ? histPotFromPeak(fp) : Math.min(p.pot, 76); p.histPot = hp;
@@ -210,7 +218,7 @@ export function newLeague(data, opts = {}) {
     if (p.draft) p.draft.tid = null;
   }
   // Random rosters (PGM2-style "random league"): the real 1996-97 players are dealt to teams by a snake draft in random order
-  if (opts.rosters === 'random' && (!opts.start || opts.start === 'PRESEASON')) {
+  if (!modern && opts.rosters === 'random' && (!opts.start || opts.start === 'PRESEASON')) {
     const pool = L.players.filter(p => p.tid >= 0).sort((a, b) => b.ovr - a.ovr); const order = shuffle(L.teams.map(t => t.tid));
     pool.forEach((p, i) => { const r = Math.floor(i / order.length), k = i % order.length; p.tid = order[r % 2 ? order.length - 1 - k : k]; });
     L.randomRosters = true;
@@ -226,7 +234,7 @@ export function newLeague(data, opts = {}) {
       const f = Math.max(0.3, (lim - fix) / Math.max(1, pr - fix)); if (f < 1) for (const p of est) p.contract.amt = Math.max(minSalary(season), Math.round(p.contract.amt * f / 10) * 10); }
   }
   // historic start: teams whose real roster the source only partly covers get generated fill-ins; plus a small FA pool
-  if (H) { for (const t of L.teams) if (!t.inactive) while (teamPlayers(L, t.tid).length < ROSTER_MIN) { const f = generateVeteran(season, randInt(40, 50)); f.tid = t.tid; f.fillIn = true; f.contract = { amt: minSalary(season), exp: season, rookie: false }; L.players.push(f); }
+  if (H || modern) { for (const t of L.teams) if (!t.inactive) while (teamPlayers(L, t.tid).length < ROSTER_MIN) { const f = generateVeteran(season, randInt(40, 50)); f.tid = t.tid; f.fillIn = true; f.contract = { amt: minSalary(season), exp: season, rookie: false }; L.players.push(f); }
     for (let i = 0; i < 20; i++) { const f = generateVeteran(season, randInt(40, 50)); f.tid = -1; f.fillIn = true; f.contract = null; L.players.push(f); } }
   for (const p of L.players) resetSeasonStats(p, season);
   // staff

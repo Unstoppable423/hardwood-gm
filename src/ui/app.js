@@ -114,7 +114,19 @@ async function boot() {
 async function loadData() {
   if (DATA) return DATA;
   const [start, classes, history, contracts] = await Promise.all([fetch('data/start1996.json').then(r => r.json()), fetch('data/draftclasses.json').then(r => r.json()), fetch('data/history.json').then(r => r.json()).catch(() => null), fetch('data/contracts1996.json').then(r => r.json()).catch(() => null)]);
-  DATA = { start, classes, history, contracts }; return DATA;
+  DATA = { start, classes, history, contracts, packs: {} }; return DATA;
+}
+async function ensureSeason(year) {
+  await loadData();
+  const y = +year;
+  if (!y || y < 1947 || y > 2026) { DATA.season = null; return null; }
+  if (DATA.packs[y]) { DATA.season = DATA.packs[y]; return DATA.season; }
+  try {
+    const r = await fetch(`data/seasons/${y}.json`);
+    if (!r.ok) { DATA.season = null; return null; }
+    const j = await r.json();
+    DATA.packs[y] = j; DATA.season = j; return j;
+  } catch { DATA.season = null; return null; }
 }
 function attach(L) {
   L.dcGlobal = dcGlobal();
@@ -235,12 +247,12 @@ function setupView() {
   return `<div class="hdr"><button class="lb" data-a="toSlots" data-mode="new">${icon('back')}</button><div class="ttl">Create GM</div><span></span></div><div class="wrap">
   <div class="card"><h3>General Manager</h3><div class="muted">Your name</div><input data-ng="gmName" value="${esc(n.gmName)}" placeholder="Mitchell">
   ${opt('archetype', n.archetype, Object.keys(E.ARCHETYPES).map(k => [k, k]), 'GM style (locked for this save)')}<div class="muted">${esc(E.ARCHETYPES[n.archetype])}</div></div>
-  <div class="card"><h3>League</h3>${(() => { const y = +n.startYear || 1997; const nt = y < 1997 ? E.teamsAt(y).length : 29;
-    const yrs = []; for (let k = 1997; k >= E.HIST_MIN; k--) yrs.push([k, k === 1997 ? '1996-97 (full data)' : seasonLbl(k) + (k <= 1949 ? ' · BAA' : '')]);
+  <div class="card"><h3>League</h3>${(() => { const y = +n.startYear || 1997; const nt = y === 1997 ? 29 : E.teamsAt(y).length;
+    const yrs = []; for (let k = 2026; k >= E.HIST_MIN; k--) yrs.push([k, k === 1997 ? '1996-97 (full camp)' : seasonLbl(k) + (k <= 1949 ? ' · BAA' : '')]);
     return `<div class="kv"><span>Season</span><b>${seasonLbl(y)} · ${nt} teams</b></div>${opt('startYear', y, yrs, 'Start year')}
-    ${y < 1997 ? `<div class="muted small" id="eraNote">Real ${seasonLbl(y)} rosters from Wikipedia player articles. ${y < 1980 ? 'No 3-point line until 1979-80. ' : ''}${y < 1955 ? 'No shot clock until 1954-55. ' : ''}${y < 1985 ? 'No salary cap until 1984-85. ' : ''}Rosters of ${E.rosterMaxAt(y)}. Every real expansion, relocation, fold and the 1976 ABA merger happen in their real years. ${y < 1965 ? 'Early data is thin: many ratings are estimated from honors, minutes and team records, and short rosters get generated fill-ins.' : 'Some ratings are estimated where a player has no stats table.'}</div>` : ''}`; })()}
-  ${(+n.startYear || 1997) < 1997 ? '' : opt('start', n.start, [['PRESEASON', 'Preseason — rosters as they opened 1996-97'], ['FA', 'Free agency — summer of 1996 (Shaq, Mourning, Payton, Howard on the market)'], ['DRAFT', 'Draft — 1996 draft night (Iverson, Kobe, Nash, Ray Allen…)']], 'Start point')}
-  ${(+n.startYear || 1997) < 1997 ? '' : opt('rosters', n.rosters || 'real', [['real', 'Real 1996-97 rosters'], ['random', 'Random: real players dealt to teams by a snake draft'], ['file', 'Roster file (imported .json)']], 'Rosters')}${n.rosters === 'file' ? `<div class="card" style="margin:6px 14px"><div class="row sp"><span>${n.rosterFile ? `<b>${esc(n.rosterName || 'roster file')}</b> · ${n.rosterFile.players.length} players` : 'No file chosen. Export one from Settings in any league, edit it, then load it here.'}</span><label class="filebtn sm">${n.rosterFile ? 'Change' : 'Choose file'}<input id="rosterFile" type="file" accept=".json,application/json"></label></div>${n.rosterFile ? '<button class="sm ghost" data-a="rosterClear" style="margin-top:6px">Use real rosters</button>' : ''}</div>` : ''}${n.rosters === 'random' && n.start !== 'PRESEASON' ? '<div class="muted small" style="padding:0 14px">Random rosters apply to the 1996-97 training camp start.</div>' : ''}
+    ${y > 1997 ? `<div class="muted small" id="eraNote">Real ${seasonLbl(y)} rosters. Overalls rank that season’s real production (stats.nba.com lines). The sim plays the games with those tendencies. It does not replay box scores. Teams use their real city and name for that year.</div>` : y < 1997 ? `<div class="muted small" id="eraNote">Real ${seasonLbl(y)} rosters from Wikipedia player articles, with per-game points, rebounds and assists from the historical box-score tables where those seasons were tracked. ${y < 1980 ? 'No 3-point line until 1979-80. ' : ''}${y < 1974 ? 'Steals and blocks were not tracked until 1973-74. ' : ''}${y < 1955 ? 'No shot clock until 1954-55. ' : ''}${y < 1985 ? 'No salary cap until 1984-85. ' : ''}Rosters of ${E.rosterMaxAt(y)}. Every real expansion, relocation, fold and the 1976 ABA merger happen in their real years. ${y < 1965 ? 'Early minutes are thin: some ratings still come from honors and team records, and short rosters get generated fill-ins.' : 'Some ratings are estimated where a player has no stats table.'}</div>` : ''}`; })()}
+  ${(+n.startYear || 1997) === 1997 ? opt('start', n.start, [['PRESEASON', 'Preseason — rosters as they opened 1996-97'], ['FA', 'Free agency — summer of 1996 (Shaq, Mourning, Payton, Howard on the market)'], ['DRAFT', 'Draft — 1996 draft night (Iverson, Kobe, Nash, Ray Allen…)']], 'Start point') : ''}
+  ${(+n.startYear || 1997) === 1997 ? opt('rosters', n.rosters || 'real', [['real', 'Real 1996-97 rosters'], ['random', 'Random: real players dealt to teams by a snake draft'], ['file', 'Roster file (imported .json)']], 'Rosters') : ''}${n.rosters === 'file' && (+n.startYear || 1997) === 1997 ? `<div class="card" style="margin:6px 14px"><div class="row sp"><span>${n.rosterFile ? `<b>${esc(n.rosterName || 'roster file')}</b> · ${n.rosterFile.players.length} players` : 'No file chosen. Export one from Settings in any league, edit it, then load it here.'}</span><label class="filebtn sm">${n.rosterFile ? 'Change' : 'Choose file'}<input id="rosterFile" type="file" accept=".json,application/json"></label></div>${n.rosterFile ? '<button class="sm ghost" data-a="rosterClear" style="margin-top:6px">Use real rosters</button>' : ''}</div>` : ''}${n.rosters === 'random' && n.start !== 'PRESEASON' && (+n.startYear || 1997) === 1997 ? '<div class="muted small" style="padding:0 14px">Random rosters apply to the 1996-97 training camp start.</div>' : ''}
   ${opt('draftClasses', n.draftClasses, [['real', (+n.startYear || 1997) < 1997 ? 'Real drafts (NBA players) + 2027 mock' : 'Real NBA drafts (1997–2026) + 2027 mock, then generated'], ['generated', 'Generated prospects only']], 'Draft classes')}
   ${opt('histTendency', n.histTendency, [[0, 'Off — careers fully random'], [0.35, 'Light — mostly random'], [0.5, 'Medium — real stars usually emerge (default)'], [0.7, 'Strong — close to real careers']], 'Real-career tendency for drafted rookies')}</div>
   <div class="card"><h3>Difficulty</h3><div class="pill-seg" style="margin:0 0 8px">${['Easy', 'Medium', 'Hard', 'Custom'].map(d => `<button class="${(n.custom ? 'Custom' : n.difficulty) === d ? 'on' : ''}" data-a="ngDiff" data-d="${d}">${d}</button>`).join('')}</div>
@@ -1477,9 +1489,11 @@ const A = {
   toSetup() { S.view = 'setup'; render(); },
   async toPickTeam() {
     if (S.ng.rosters === 'file' && !S.ng.rosterFile) return toast('Choose a roster file first.');
-    const hy = +S.ng.startYear || 1997; if (hy < 1997) { S.ng.start = 'PRESEASON'; S.ng.rosters = 'real'; }
-    overlay(hy < 1997 ? `Building the ${seasonLbl(hy)} league` : S.ng.start === 'DRAFT' ? 'Building the 1996 draft' : S.ng.start === 'FA' ? 'Opening 1996 free agency' : 'Building the 1996-97 league'); await sleep(20);
-    await loadData(); S.ngSeed = Math.floor(Math.random() * 2 ** 31);
+    const hy = +S.ng.startYear || 1997; if (hy !== 1997) { S.ng.start = 'PRESEASON'; S.ng.rosters = 'real'; }
+    overlay(hy > 1997 ? `Building the ${seasonLbl(hy)} league` : hy < 1997 ? `Building the ${seasonLbl(hy)} league` : S.ng.start === 'DRAFT' ? 'Building the 1996 draft' : S.ng.start === 'FA' ? 'Opening 1996 free agency' : 'Building the 1996-97 league'); await sleep(20);
+    await loadData(); const pack = await ensureSeason(hy);
+    if (hy !== 1997 && !pack) { overlay(null); return toast('That season’s real stat lines could not be loaded.', 4000); }
+    S.ngSeed = Math.floor(Math.random() * 2 ** 31);
     try { S.preL = E.newLeague(DATA, { dcGlobal: dcGlobal(), ...S.ng, rosterFile: S.ng.rosters === 'file' ? S.ng.rosterFile : null, seed: S.ngSeed }); } catch (e) { overlay(null); return toast('Could not build the league: ' + e.message, 4000); } overlay(null); S.view = 'pickteam'; render();
   },
   previewTeam(d) { S.previewTid = +d.tid; S.view = 'preview'; render(); pageTo(0); },
@@ -1488,7 +1502,7 @@ const A = {
     const L = E.newLeague(DATA, { dcGlobal: dcGlobal(), ...S.ng, rosterFile: S.ng.rosters === 'file' ? S.ng.rosterFile : null, gmName: S.ng.gmName || 'GM', seed: S.ngSeed, userTid: S.previewTid });
     attach(L); S.preL = null; S.tab = {}; await saveSlot(S.slot, L); overlay(null); S.view = 'main'; root(L.phase === 'DRAFT' ? 'draft' : L.phase.startsWith('FA') ? 'fa' : 'home');
   },
-  async loadSlot(d) { overlay('Loading'); const L = await loadSlot(+d.slot); overlay(null); if (!L) return toast('Empty slot'); await loadData().catch(() => {}); attach(L); S.slot = +d.slot; S.view = 'main'; root('home'); },
+  async loadSlot(d) { overlay('Loading'); const L = await loadSlot(+d.slot); overlay(null); if (!L) return toast('Empty slot'); await loadData().catch(() => {}); await ensureSeason(L.histStart || 1997).catch(() => {}); attach(L); S.slot = +d.slot; S.view = 'main'; root('home'); },
   async delSlot(d) { if (!confirm(`Delete save in slot ${d.slot}?`)) return; await deleteSlot(+d.slot); S.slots = await listSlots(); render(); },
   importPick() { $('#importFile')?.click(); },
   importCancel() { S.pendingImport = null; render(); toast('Import cancelled. Nothing was saved.'); },
@@ -1499,6 +1513,7 @@ const A = {
     try {
       await loadData().catch(() => {});
       const L = pending.league;
+      await ensureSeason(L.histStart || 1997).catch(() => {});
       attach(L); S.slot = slot; await saveSlot(slot, L); S.slots = await listSlots();
       S.pendingImport = null; S.view = 'main';
       root('home');

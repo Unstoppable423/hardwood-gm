@@ -32,10 +32,11 @@ export const FRANCHISES = [
   F('ATL', 'joined from the NBL', [[1950, 1951, 'TRI', 'Tri-Cities', 'Blackhawks', '#c8102e', '#000000', 41.5, -90.6], [1952, 1955, 'MLH', 'Milwaukee', 'Hawks', '#c8102e', '#000000', 43.0, -87.9],
     [1956, 1968, 'STL', 'St. Louis', 'Hawks', '#002f6c', '#c8102e', 38.6, -90.2], [1969, NOW, 'ATL', 'Atlanta', 'Hawks', '#c8102e', '#fdb927', 33.8, -84.4]]),
   F('WAS', 'expansion', [[1962, 1962, 'CHP', 'Chicago', 'Packers', '#2e7d32', '#ffd700', 41.9, -87.6], [1963, 1963, 'CHZ', 'Chicago', 'Zephyrs', '#f47b20', '#002b5c', 41.9, -87.6],
-    [1964, 1973, 'BAL', 'Baltimore', 'Bullets', '#e03a3e', '#00205b', 39.3, -76.6], [1974, 1974, 'CAP', 'Capital', 'Bullets', '#c8102e', '#002b5c', 38.9, -76.9], [1975, NOW, 'WAS', 'Washington', 'Bullets', '#c8102e', '#002b5c', 38.9, -77.0]]),
+    [1964, 1973, 'BAL', 'Baltimore', 'Bullets', '#e03a3e', '#00205b', 39.3, -76.6], [1974, 1974, 'CAP', 'Capital', 'Bullets', '#c8102e', '#002b5c', 38.9, -76.9],
+    [1975, 1997, 'WAS', 'Washington', 'Bullets', '#c8102e', '#002b5c', 38.9, -77.0], [1998, NOW, 'WAS', 'Washington', 'Wizards', '#002b5c', '#e31837', 38.9, -77.0]]),
   F('CHI', 'expansion', [[1967, NOW, 'CHI', 'Chicago', 'Bulls', '#ce1141', '#111111', 41.9, -87.6]]),
   F('HOU', 'expansion', [[1968, 1971, 'SDR', 'San Diego', 'Rockets', '#00843d', '#ffc72c', 32.7, -117.2], [1972, NOW, 'HOU', 'Houston', 'Rockets', '#ba0c2f', '#0a2240', 29.8, -95.4]]),
-  F('SEA', 'expansion', [[1968, NOW, 'SEA', 'Seattle', 'SuperSonics', '#00653a', '#ffc200', 47.6, -122.3]]),
+  F('SEA', 'expansion', [[1968, 2008, 'SEA', 'Seattle', 'SuperSonics', '#00653a', '#ffc200', 47.6, -122.3], [2009, NOW, 'OKC', 'Oklahoma City', 'Thunder', '#007ac1', '#ef3b24', 35.5, -97.5]]),
   F('MIL', 'expansion', [[1969, NOW, 'MIL', 'Milwaukee', 'Bucks', '#00471b', '#702f8a', 43.0, -87.9]]),
   F('PHX', 'expansion', [[1969, NOW, 'PHX', 'Phoenix', 'Suns', '#1d1160', '#e56020', 33.4, -112.1]]),
   F('LAC', 'expansion', [[1971, 1978, 'BUF', 'Buffalo', 'Braves', '#002f6c', '#f47b20', 42.9, -78.9], [1979, 1984, 'SDC', 'San Diego', 'Clippers', '#0067b1', '#f47b20', 32.7, -117.2], [1985, NOW, 'LAC', 'Los Angeles', 'Clippers', '#c8102e', '#1d428a', 34.0, -118.3]]),
@@ -44,15 +45,20 @@ export const FRANCHISES = [
   F('UTA', 'expansion', [[1975, 1979, 'NOJ', 'New Orleans', 'Jazz', '#4b2e83', '#00843d', 30.0, -90.1], [1980, NOW, 'UTA', 'Utah', 'Jazz', '#3e2680', '#b87333', 40.8, -111.9]]),
   F('DEN', 'ABA merger', [[1977, NOW, 'DEN', 'Denver', 'Nuggets', '#0d2240', '#ffc72c', 39.7, -105.0]]),
   F('IND', 'ABA merger', [[1977, NOW, 'IND', 'Indiana', 'Pacers', '#002d62', '#fdbb30', 39.8, -86.2]]),
-  F('NJN', 'ABA merger', [[1977, 1977, 'NYN', 'New York', 'Nets', '#002a60', '#cd1041', 40.7, -73.6], [1978, NOW, 'NJN', 'New Jersey', 'Nets', '#002a60', '#cd1041', 40.8, -74.1]]),
+  F('NJN', 'ABA merger', [[1977, 1977, 'NYN', 'New York', 'Nets', '#002a60', '#cd1041', 40.7, -73.6], [1978, 2012, 'NJN', 'New Jersey', 'Nets', '#002a60', '#cd1041', 40.8, -74.1], [2013, NOW, 'BKN', 'Brooklyn', 'Nets', '#111111', '#ffffff', 40.7, -73.9]]),
   F('SAS', 'ABA merger', [[1977, NOW, 'SAS', 'San Antonio', 'Spurs', '#111111', '#c4ced4', 29.4, -98.5]]),
   F('DAL', 'expansion', [[1981, NOW, 'DAL', 'Dallas', 'Mavericks', '#0b4ea2', '#00a352', 32.8, -96.8]]),
-  F('CHH', 'expansion', [[1989, NOW, 'CHH', 'Charlotte', 'Hornets', '#00788c', '#3d1f78', 35.2, -80.8]]),
+  F('CHH', 'expansion', [[1989, 2002, 'CHH', 'Charlotte', 'Hornets', '#00788c', '#3d1f78', 35.2, -80.8],
+    [2003, 2005, 'NOH', 'New Orleans', 'Hornets', '#00788c', '#b4975a', 30.0, -90.1],
+    [2006, 2007, 'NOK', 'New Orleans/Oklahoma City', 'Hornets', '#00788c', '#b4975a', 35.5, -97.5],
+    [2008, 2013, 'NOH', 'New Orleans', 'Hornets', '#00788c', '#b4975a', 30.0, -90.1],
+    [2014, NOW, 'NOP', 'New Orleans', 'Pelicans', '#0c2340', '#c8102e', 30.0, -90.1]]),
   F('MIA', 'expansion', [[1989, NOW, 'MIA', 'Miami', 'Heat', '#98002e', '#f9a01b', 25.8, -80.2]]),
   F('ORL', 'expansion', [[1990, NOW, 'ORL', 'Orlando', 'Magic', '#0077c0', '#111111', 28.5, -81.4]]),
   F('MIN', 'expansion', [[1990, NOW, 'MIN', 'Minnesota', 'Timberwolves', '#0c4a8f', '#00a94f', 45.0, -93.3]]),
   F('TOR', 'expansion', [[1996, NOW, 'TOR', 'Toronto', 'Raptors', '#6f2da8', '#ce1141', 43.7, -79.4]]),
-  F('VAN', 'expansion', [[1996, NOW, 'VAN', 'Vancouver', 'Grizzlies', '#00b2a9', '#bc7844', 49.3, -123.1]]),
+  F('VAN', 'expansion', [[1996, 2001, 'VAN', 'Vancouver', 'Grizzlies', '#00b2a9', '#bc7844', 49.3, -123.1], [2002, NOW, 'MEM', 'Memphis', 'Grizzlies', '#5d76a9', '#12173f', 35.1, -90.0]]),
+  F('CHA', 'expansion', [[2005, 2014, 'CHA', 'Charlotte', 'Bobcats', '#1d1160', '#00788c', 35.2, -80.8], [2015, NOW, 'CHA', 'Charlotte', 'Hornets', '#1d1160', '#00788c', 35.2, -80.8]]),
 ];
 export const EARLIEST = 1947, LAST_HIST = 1996; // a 1996-97 start uses the original data/start1996.json path
 export const segAt = (f, s) => f.segs.find(g => g.from <= s && s <= g.to) || null;
@@ -62,6 +68,7 @@ export const franchisesAt = (s) => FRANCHISES.filter(f => segAt(f, s));
 const DIVN = { E: ['Atlantic', 'Central'], W: ['Midwest', 'Pacific'] };
 import { TEAMS } from './constants.js';
 const AL96 = Object.fromEntries(TEAMS.map(t => [t.abbr, { conf: t.conf, div: t.div }]));
+AL96.CHA = { conf: 'E', div: 'Central' };
 export function alignment(s) {
   if (s >= 1981) return Object.fromEntries(franchisesAt(s).map(f => [f.id, AL96[f.id]]));
   const fs = franchisesAt(s).map(f => ({ f, g: segAt(f, s) })).sort((a, b) => b.g.lon - a.g.lon);

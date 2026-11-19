@@ -14,7 +14,64 @@ export function shapeFromRaw(raw) {
   if (!raw || raw.usg == null || raw.astp == null) return null;
   const shape = { usg: +raw.usg, astp: +raw.astp, orb: raw.orb ?? 0.05, drb: raw.drb ?? 0.12 };
   if (raw.reb != null && raw.reb !== '') shape.rpg = +raw.reb;
+  // Extra real per-game facts when that season actually tracked them. Missing stays off the shape.
+  if (raw.mpg != null && raw.mpg !== '') shape.mpg = +raw.mpg;
+  if (raw.tshare != null && raw.tshare !== '') shape.tshare = +raw.tshare;
+  if (raw.fg != null && raw.fg !== '') shape.fg = +raw.fg;
+  if (raw.fg3 != null && raw.fg3 !== '') shape.fg3 = +raw.fg3;
+  if (raw.stl != null && raw.stl !== '') shape.spg = +raw.stl;
+  if (raw.blk != null && raw.blk !== '') shape.bpg = +raw.blk;
   return shape;
+}
+// Compact season row: [n, fid, age, h, pos, gp, mpg, pts, reb, ast, stl, blk, tpm, tpa, fg, fg3, usg, astp, orb, drb, ts, net, tshare]
+const SCOL = { n: 0, t: 1, age: 2, h: 3, pos: 4, gp: 5, mpg: 6, pts: 7, reb: 8, ast: 9, stl: 10, blk: 11, fg: 14, fg3: 15, usg: 16, astp: 17, orb: 18, drb: 19, ts: 20, net: 21, tshare: 22 };
+export function seasonIndex(pack) {
+  const map = new Map();
+  for (const r of pack?.rows || []) {
+    const k = shapeName(r[0]);
+    if (k && !map.has(k)) map.set(k, r);
+  }
+  return map;
+}
+export function rawFromSeason(r) {
+  const g = (k) => r[SCOL[k]];
+  const mpg = g('mpg') == null ? null : +g('mpg');
+  const pts = +g('pts'), ast = +g('ast'), reb = +g('reb'), gp = +g('gp');
+  const h = g('h') == null ? 198 : +g('h');
+  const m = Math.max(8, mpg || 24);
+  const raw = {
+    n: g('n'), t: g('t'), age: g('age') == null ? 27 : +g('age'), h, w: Math.round(h * 0.47),
+    pos: g('pos') || undefined, col: '', ctry: 'USA', gp, pts, reb, ast,
+    net: g('net') == null ? 0 : +g('net'),
+    orb: g('orb') == null ? 0.05 : +g('orb'), drb: g('drb') == null ? 0.12 : +g('drb'),
+    usg: g('usg') == null ? Math.min(0.36, Math.max(0.08, 0.03 + 0.4 * pts / m)) : +g('usg'),
+    astp: g('astp') == null ? Math.min(0.5, 1.45 * ast / m) : +g('astp'),
+    ts: g('ts') == null ? 0.52 : +g('ts'),
+  };
+  if (mpg != null) raw.mpg = mpg;
+  if (g('stl') != null && g('blk') != null) {
+    raw.stl = +g('stl'); raw.blk = +g('blk');
+    raw.stl36 = +(raw.stl * 36 / m).toFixed(2); raw.blk36 = +(raw.blk * 36 / m).toFixed(2);
+    raw.defMin = Math.round(gp * m);
+  }
+  if (g('fg') != null) raw.fg = +g('fg');
+  if (g('fg3') != null) raw.fg3 = +g('fg3');
+  if (g('tshare') != null) raw.tshare = +g('tshare');
+  return raw;
+}
+// Replace only the box-score fields a real line actually has. Team, name, height and draft stay.
+export function overlayRaw(raw, pack, idx = null) {
+  if (!raw || !pack?.rows) return raw;
+  const row = (idx || seasonIndex(pack)).get(shapeName(raw.n));
+  if (!row) return raw;
+  const add = rawFromSeason(row);
+  const out = { ...raw };
+  for (const k of ['gp', 'pts', 'reb', 'ast', 'net', 'orb', 'drb', 'usg', 'astp', 'ts', 'mpg', 'stl', 'blk', 'stl36', 'blk36', 'defMin', 'fg', 'fg3', 'tshare']) {
+    const col = SCOL[k];
+    if (col != null && row[col] != null) out[k] = add[k];
+  }
+  if (row[SCOL.stl] != null && row[SCOL.blk] != null) { out.stl36 = add.stl36; out.blk36 = add.blk36; out.defMin = add.defMin; }
+  return out;
 }
 function shapeSeason(hp, L) {
   const years = Object.keys(hp.s || {}).map(Number).filter(y => y > 1900).sort((a, b) => a - b);
@@ -36,18 +93,25 @@ export function ensureShapes(L, data) {
     if (k && !byName.has(k)) byName.set(k, hp);
   }
   const historic = L.histStart && L.histStart < 1997;
+  const modern = L.histStart && L.histStart > 1997;
+  const packIdx = seasonIndex(data?.season);
   let n = 0;
   for (const p of L.players) {
-    if (p.shape?.usg != null && p.shape.astp != null && p.shape.drb != null) continue;
     let raw = null;
     const hp = (p.arcKey && byKey.get(p.arcKey)) || (p.histKey && byKey.get(p.histKey)) || byName.get(shapeName(p.name));
-    if (historic && hp) raw = rawFor(hp, shapeSeason(hp, L));
-    if (!raw && !historic) raw = startBy.get(shapeName(p.name));
-    if (!raw && hp) raw = rawFor(hp, shapeSeason(hp, L));
+    if (modern) {
+      const row = packIdx.get(shapeName(p.name));
+      if (row) raw = rawFromSeason(row);
+    } else {
+      if (historic && hp) raw = rawFor(hp, shapeSeason(hp, L));
+      if (!raw && !historic) raw = startBy.get(shapeName(p.name));
+      if (!raw && hp) raw = rawFor(hp, shapeSeason(hp, L));
+      if (raw && packIdx.size) raw = overlayRaw(raw, data.season, packIdx);
+    }
     const shape = shapeFromRaw(raw);
     if (!shape) continue;
-    p.shape = shape;
-    n++;
+    if (!p.shape) { p.shape = shape; n++; continue; }
+    for (const [k, v] of Object.entries(shape)) if (p.shape[k] == null) { p.shape[k] = v; n++; }
   }
   return n;
 }
