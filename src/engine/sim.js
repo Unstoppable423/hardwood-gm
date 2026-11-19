@@ -38,9 +38,15 @@ function astWeight(r, p) {
   return Math.pow(Math.max(0.04, s.astp) / 0.15, 1.25);
 }
 function threeWeight(r, p, ht) {
+  if (!(ERA.three > 0)) return 0;
+  const s = p.shape;
+  // A real three-point share beats the rating guess. Seasons before the line have no share.
+  if (s?.tshare != null) {
+    const share = clamp(+s.tshare, 0, 0.62);
+    return 1.85 * share / Math.max(0.12, 1 - share);
+  }
   const gap = clamp((r.out - 55) / 28, 0, 1.7);
   let w = ERA.three * (2.35 + 0.12 * gap) * Math.exp(-1.15 * Math.max(0, ht - 0.15));
-  const s = p.shape;
   if (s && s.astp < 0.2 && s.usg >= 0.16 && r.out >= 72 && ht < 0.85) w *= 2.8;
   return w;
 }
@@ -57,7 +63,10 @@ function composites(p) {
     // bump players whose real profile is a low-assist scorer (Miller, Rice), not Jordan.
     w3: threeWeight(r, p, ht),
     ft: clamp(0.39 + r.out * 0.0052 + r.iq * 0.0006 - Math.max(0, ht) * 0.045, 0.4, 0.92),
-    han: r.han, pas: r.pas, reb: rebSkill(r, p), astW: astWeight(r, p), idef: r.idef, pdef: r.pdef, iq: r.iq, h: p.h, dur: r.dur, blk: r.blk ?? r.idef - 10, stl: r.stl ?? r.pdef - 8,
+    han: r.han, pas: r.pas, reb: rebSkill(r, p), astW: astWeight(r, p), idef: r.idef, pdef: r.pdef, iq: r.iq, h: p.h, dur: r.dur,
+    blk: p.shape?.bpg != null ? clamp(34 + p.shape.bpg * 18, 22, 99) : (r.blk ?? r.idef - 10),
+    stl: p.shape?.spg != null ? clamp(40 + p.shape.spg * 20, 22, 99) : (r.stl ?? r.pdef - 8),
+    fg: p.shape?.fg, fg3: p.shape?.fg3,
     big: p.pos === 'PF' || p.pos === 'C', guard: p.pos === 'PG' || p.pos === 'SG',
   };
 }
@@ -86,7 +95,20 @@ export function autoRotation(players) {
   const order = [...starters.slice().sort((a, b) => b.ovr - a.ovr), ...rest];
   const MIN = [36, 35, 33, 31, 29, 22, 18, 14, 10, 7, 5, 0, 0, 0, 0];
   const minutes = {}; let tot = 0;
-  order.forEach((p, i) => { minutes[p.pid] = MIN[i] ?? 0; tot += minutes[p.pid]; });
+  const knownMin = order.filter(p => p.shape?.mpg != null).length >= 5;
+  if (knownMin) {
+    // Real minutes already add up for a full roster. After the low-minute end is cut, peel
+    // the extra off the short end so a 40-minute star is not scaled down with the bench.
+    order.forEach(p => { minutes[p.pid] = p.shape?.mpg != null ? clamp(p.shape.mpg, 0, 42) : 0; tot += minutes[p.pid]; });
+    if (tot > 240) {
+      let extra = tot - 240;
+      for (const p of order.slice().sort((a, b) => minutes[a.pid] - minutes[b.pid])) {
+        if (extra <= 0) break;
+        const cut = Math.min(minutes[p.pid], extra);
+        minutes[p.pid] -= cut; extra -= cut; tot -= cut;
+      }
+    }
+  } else order.forEach((p, i) => { minutes[p.pid] = MIN[i] ?? 0; tot += minutes[p.pid]; });
   // normalize to 240
   const scale = tot > 0 ? 240 / tot : 1; for (const k in minutes) minutes[k] = Math.round(minutes[k] * scale);
   return { starters: starters.map(p => p.pid), minutes, slots: Object.fromEntries(Object.entries(bySlot).map(([k, p]) => [k, p.pid])) };
@@ -226,6 +248,9 @@ export function simGame(home, away, opts = {}) {
         : type === 2 ? 0.36 + TALENT * ((rating - 60) * 0.005 - (defP - 60) * 0.003)
           : 0.262 + ERA.tp + TALENT * ((rating - 60) * 0.0058 - (defP - 60) * 0.002);
       pMake += (off.side === 0 ? homeAdv : 0) + (opts.edge ? opts.edge[off.side] : 0) + coachEdge + off.offEdge - def.defEdge + off.form + (type === 1 ? dx.rim : type === 2 ? dx.mid : dx.three);
+      // Pull the make rate partway toward the player's real shooting, when that season tracked it.
+      if (type < 3 && sh.fg != null) pMake = pMake * 0.6 + sh.fg * 0.4;
+      if (type === 3 && sh.fg3 != null) pMake = pMake * 0.6 + sh.fg3 * 0.4;
       pMake = clamp(pMake, 0.12, 0.8);
       const foulP = type === 1 ? 0.24 + ERA.drawFoul : type === 2 ? 0.065 : 0.015;
       const fouled = rand() < foulP;
